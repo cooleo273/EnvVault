@@ -1,0 +1,195 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+  NEXT_TELEMETRY_DISABLED: 1
+  PRISMA_HIDE_UPDATE_MESSAGE: 1
+
+jobs:
+  verify:
+    name: Lint, typecheck, test & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  database:
+    name: Database migrations, seed & integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          # Disposable CI-only container; not reachable outside the job.
+          POSTGRES_USER: envvault
+          POSTGRES_PASSWORD: ci-disposable-password
+          POSTGRES_DB: envvault
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U envvault"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://envvault:ci-disposable-password@localhost:5432/envvault?schema=public
+      TEST_DATABASE_URL: postgresql://envvault:ci-disposable-password@localhost:5432/envvault_test?schema=public
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create test database
+        run: PGPASSWORD=ci-disposable-password psql -h localhost -U envvault -d envvault -c 'CREATE DATABASE envvault_test'
+
+      - name: Validate Prisma schema
+        run: pnpm --filter @envvault/database db:validate
+
+      - name: Apply migrations
+        run: pnpm db:migrate:deploy
+
+      - name: Align built-in roles (twice, to verify idempotency)
+        run: pnpm --filter @envvault/database build && pnpm db:sync-catalog && pnpm db:sync-catalog
+
+      - name: Check schema drift (migrations vs schema)
+        run: pnpm db:check-drift
+
+      - name: Seed (twice, to verify idempotency)
+        run: pnpm db:seed && pnpm --filter @envvault/database db:seed
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+  e2e-web:
+    name: Web end-to-end (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm --filter @envvault/web exec playwright install --with-deps chromium
+
+      - name: Build web
+        run: pnpm turbo run build --filter=@envvault/web
+
+      - name: Run Playwright tests
+        run: pnpm --filter @envvault/web test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
+
+  e2e-auth:
+    name: Full-stack auth end-to-end (Next.js + API + Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: verify
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          # Disposable CI-only container; not reachable outside the job.
+          POSTGRES_USER: envvault
+          POSTGRES_PASSWORD: ci-disposable-password
+          POSTGRES_DB: envvault_e2e_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U envvault"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Reset and migrated by the suite; the name must contain "test".
+      E2E_DATABASE_URL: postgresql://envvault:ci-disposable-password@localhost:5432/envvault_e2e_test?schema=public
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm --filter @envvault/web exec playwright install --with-deps chromium
+
+      # Neon Auth is replaced by a local Better Auth stand-in configured like
+      # Neon (EdDSA JWKS, 15-minute JWTs, __Secure-neon-auth cookies). No Neon
+      # credentials are used in CI.
+      - name: Run full-stack Playwright tests
+        run: pnpm test:e2e:auth
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-auth-report
+          path: apps/web/playwright-report
+          retention-days: 7

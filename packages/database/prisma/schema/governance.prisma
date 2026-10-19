@@ -1,0 +1,113 @@
+/// Proposed set of secret changes for a (typically protected) environment.
+model ChangeRequest {
+  id                String              @id @default(uuid(7)) @db.Uuid
+  workspaceId       String              @map("workspace_id") @db.Uuid
+  projectId         String              @map("project_id") @db.Uuid
+  environmentId     String              @map("environment_id") @db.Uuid
+  title             String              @db.VarChar(200)
+  description       String?             @db.VarChar(5000)
+  status            ChangeRequestStatus @default(OPEN)
+  /// Snapshot of the environment's approval requirement at creation time.
+  requiredApprovals Int                 @map("required_approvals")
+  requestedById     String              @map("requested_by_id") @db.Uuid
+  appliedById       String?             @map("applied_by_id") @db.Uuid
+  appliedAt         DateTime?           @map("applied_at") @db.Timestamptz(3)
+  closedAt          DateTime?           @map("closed_at") @db.Timestamptz(3)
+  expiresAt         DateTime?           @map("expires_at") @db.Timestamptz(3)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  environment Environment         @relation(fields: [workspaceId, projectId, environmentId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "change_requests_environment_fkey")
+  requestedBy User                @relation("ChangeRequestRequestedBy", fields: [requestedById], references: [id], onDelete: NoAction)
+  appliedBy   User?               @relation("ChangeRequestAppliedBy", fields: [appliedById], references: [id], onDelete: NoAction)
+  items       ChangeRequestItem[]
+  approvals   ChangeApproval[]
+
+  @@unique([workspaceId, id])
+  @@index([environmentId, status])
+  @@index([requestedById])
+  @@map("change_requests")
+}
+
+/// One proposed operation within a change request. Proposed values are stored
+/// envelope-encrypted exactly like SecretVersion, never as plaintext.
+model ChangeRequestItem {
+  id               String                @id @default(uuid(7)) @db.Uuid
+  workspaceId      String                @map("workspace_id") @db.Uuid
+  changeRequestId  String                @map("change_request_id") @db.Uuid
+  operation        SecretChangeOperation
+  /// Target secret for UPDATE/DELETE; null for CREATE.
+  secretId         String?               @map("secret_id") @db.Uuid
+  secretKey        String                @map("secret_key") @db.VarChar(256)
+  secretType       SecretType?           @map("secret_type")
+  description      String?               @db.VarChar(1000)
+  ciphertext       Bytes?
+  iv               Bytes?
+  authTag          Bytes?                @map("auth_tag")
+  encryptedDataKey Bytes?                @map("encrypted_data_key")
+  algorithm        EncryptionAlgorithm?
+  envelopeVersion  Int?                  @map("envelope_version")
+  encryptionKeyId  String?               @map("encryption_key_id") @db.Uuid
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  changeRequest ChangeRequest  @relation(fields: [workspaceId, changeRequestId], references: [workspaceId, id], onDelete: Cascade, map: "change_request_items_change_request_fkey")
+  secret        Secret?        @relation(fields: [workspaceId, secretId], references: [workspaceId, id], onDelete: Cascade, map: "change_request_items_secret_fkey")
+  encryptionKey EncryptionKey? @relation(fields: [workspaceId, encryptionKeyId], references: [workspaceId, id], onDelete: NoAction, map: "change_request_items_encryption_key_fkey")
+
+  @@unique([changeRequestId, secretKey])
+  @@index([secretId])
+  @@index([encryptionKeyId])
+  @@map("change_request_items")
+}
+
+/// A reviewer's decision on a change request. Self-approval is rejected by a trigger.
+model ChangeApproval {
+  id              String           @id @default(uuid(7)) @db.Uuid
+  workspaceId     String           @map("workspace_id") @db.Uuid
+  changeRequestId String           @map("change_request_id") @db.Uuid
+  reviewerId      String           @map("reviewer_id") @db.Uuid
+  decision        ApprovalDecision
+  comment         String?          @db.VarChar(2000)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  changeRequest ChangeRequest @relation(fields: [workspaceId, changeRequestId], references: [workspaceId, id], onDelete: Cascade, map: "change_approvals_change_request_fkey")
+  reviewer      User          @relation(fields: [reviewerId], references: [id], onDelete: NoAction)
+
+  @@unique([changeRequestId, reviewerId])
+  @@index([reviewerId])
+  @@map("change_approvals")
+}
+
+/// Append-only security audit trail (UPDATE/DELETE are rejected by a trigger).
+/// Actor and resource identifiers are deliberately NOT foreign keys so history
+/// survives deletion of the referenced rows. Never contains secret values.
+model AuditEvent {
+  id                     String         @id @default(uuid(7)) @db.Uuid
+  /// Null for platform-level events (e.g. user account events).
+  workspaceId            String?        @map("workspace_id") @db.Uuid
+  occurredAt             DateTime       @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  actorType              AuditActorType @map("actor_type")
+  actorUserId            String?        @map("actor_user_id") @db.Uuid
+  actorServiceIdentityId String?        @map("actor_service_identity_id") @db.Uuid
+  /// Dotted action name, e.g. `secret.version.created`.
+  action                 String         @db.VarChar(100)
+  outcome                AuditOutcome
+  resourceType           String         @map("resource_type") @db.VarChar(50)
+  resourceId             String?        @map("resource_id") @db.Uuid
+  projectId              String?        @map("project_id") @db.Uuid
+  environmentId          String?        @map("environment_id") @db.Uuid
+  requestId              String?        @map("request_id") @db.VarChar(128)
+  ipAddress              String?        @map("ip_address") @db.Inet
+  userAgent              String?        @map("user_agent") @db.VarChar(512)
+  /// Non-sensitive context (e.g. secret key name, version number). Never values.
+  metadata               Json           @default("{}") @db.JsonB
+
+  /// NO ACTION: a workspace cannot be hard-purged while audit records exist.
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: NoAction)
+
+  @@index([workspaceId, occurredAt(sort: Desc)])
+  @@index([workspaceId, resourceType, resourceId])
+  @@index([actorUserId, occurredAt])
+  @@index([actorServiceIdentityId, occurredAt])
+  @@map("audit_events")
+}

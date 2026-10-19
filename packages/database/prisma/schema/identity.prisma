@@ -1,0 +1,224 @@
+/// EnvVault's application profile of a human identity. Global (not
+/// tenant-owned): users join workspaces through memberships.
+///
+/// Authentication is owned by Neon Auth (managed Better Auth): accounts,
+/// passwords, sessions and verification tokens live in the Neon-managed
+/// `neon_auth` schema, which EnvVault migrations never touch. This row only
+/// references that identity through its stable id and caches display fields
+/// from verified tokens. No passwords or authentication secrets are stored.
+model User {
+  id              String     @id @default(uuid(7)) @db.Uuid
+  /// Stable Neon Auth user id (`neon_auth.user.id`, the JWT `sub`).
+  authUserId      String     @unique @map("auth_user_id") @db.VarChar(255)
+  /// Cached from the verified token (Neon Auth is authoritative). Lower-cased
+  /// by a CHECK constraint; not unique because the identity provider owns it.
+  email           String     @db.VarChar(320)
+  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz(3)
+  displayName     String?    @map("display_name") @db.VarChar(120)
+  avatarUrl       String?    @map("avatar_url") @db.VarChar(2048)
+  status          UserStatus @default(ACTIVE)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Soft delete: users are referenced by history. Deletion anonymises the row.
+  deletedAt       DateTime?  @map("deleted_at") @db.Timestamptz(3)
+  /// Last workspace the user opened. A preference only: access is always
+  /// re-checked against memberships before it is used.
+  lastWorkspaceId String?    @map("last_workspace_id") @db.Uuid
+
+  workspacesCreated         Workspace[]             @relation("WorkspaceCreatedBy")
+  memberships               WorkspaceMembership[]
+  invitationsSent           WorkspaceInvitation[]   @relation("InvitationInvitedBy")
+  invitationsAccepted       WorkspaceInvitation[]   @relation("InvitationAcceptedBy")
+  secretsCreated            Secret[]                @relation("SecretCreatedByUser")
+  secretsUpdated            Secret[]                @relation("SecretUpdatedByUser")
+  secretVersionsCreated     SecretVersion[]         @relation("SecretVersionCreatedByUser")
+  rotationPoliciesCreated   SecretRotationPolicy[]  @relation("RotationPolicyCreatedBy")
+  serviceIdentitiesCreated  ServiceIdentity[]       @relation("ServiceIdentityCreatedBy")
+  serviceCredentialsCreated ServiceCredential[]     @relation("ServiceCredentialCreatedBy")
+  serviceCredentialsRevoked ServiceCredential[]     @relation("ServiceCredentialRevokedBy")
+  accessPoliciesCreated     AccessPolicy[]          @relation("AccessPolicyCreatedBy")
+  changeRequestsRequested   ChangeRequest[]         @relation("ChangeRequestRequestedBy")
+  changeRequestsApplied     ChangeRequest[]         @relation("ChangeRequestAppliedBy")
+  changeApprovals           ChangeApproval[]
+  integrationsCreated       IntegrationConnection[]
+  notifications             Notification[]
+  tokenRevocation           AuthTokenRevocation?
+  stepUpGrants              AuthStepUpGrant[]
+  lastWorkspace             Workspace?              @relation("UserLastWorkspace", fields: [lastWorkspaceId], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([lastWorkspaceId])
+  @@map("users")
+}
+
+/// Per-user lower bound on accepted access-token issue times.
+///
+/// Neon Auth access tokens are stateless JWTs valid for 15 minutes, so ending
+/// a Neon session does not invalidate tokens already issued. After logout,
+/// "sign out everywhere" or a password change, the API rejects any token for
+/// this user with `iat` earlier than `notBefore`.
+model AuthTokenRevocation {
+  userId    String               @id @map("user_id") @db.Uuid
+  notBefore DateTime             @map("not_before") @db.Timestamptz(3)
+  reason    AuthRevocationReason
+  updatedAt DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("auth_token_revocations")
+}
+
+/// Short-lived proof that the user re-verified their credentials with Neon
+/// Auth ("sudo mode"). Required by sensitive API actions; created only by the
+/// API after a successful server-side re-verification.
+model AuthStepUpGrant {
+  id        String       @id @default(uuid(7)) @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  method    StepUpMethod
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt DateTime     @map("expires_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("auth_step_up_grants")
+}
+
+/// Tenant root. Every tenant-owned row belongs to exactly one workspace.
+model Workspace {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  name        String        @db.VarChar(100)
+  /// Unique among non-deleted workspaces (partial unique index).
+  slug        String        @db.VarChar(63)
+  description String?       @db.VarChar(500)
+  type        WorkspaceType @default(TEAM)
+  createdById String?       @map("created_by_id") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Soft delete: recovery window before a hard purge cascades all tenant data.
+  deletedAt   DateTime?     @map("deleted_at") @db.Timestamptz(3)
+  /// Archived workspaces are read-only until restored. Independent of deletion.
+  archivedAt  DateTime?     @map("archived_at") @db.Timestamptz(3)
+
+  createdBy              User?                   @relation("WorkspaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lastOpenedBy           User[]                  @relation("UserLastWorkspace")
+  roles                  Role[]
+  memberships            WorkspaceMembership[]
+  invitations            WorkspaceInvitation[]
+  projects               Project[]
+  environmentTemplates   EnvironmentTemplate[]
+  encryptionKeys         EncryptionKey[]
+  serviceIdentities      ServiceIdentity[]
+  auditEvents            AuditEvent[]
+  integrationConnections IntegrationConnection[]
+  notifications          Notification[]
+
+  @@index([createdById])
+  @@map("workspaces")
+}
+
+/// Catalog of permission keys (e.g. `secret:read`). Global reference data that
+/// is synchronised from code; it contains no tenant data.
+model Permission {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  key         String   @unique @db.VarChar(100)
+  resource    String   @db.VarChar(50)
+  action      String   @db.VarChar(50)
+  description String   @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+/// Named set of permissions, owned by a workspace. Built-in roles are copied
+/// into every workspace (`isSystem = true`) so roles never span tenants.
+model Role {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  key         String    @db.VarChar(64)
+  name        String    @db.VarChar(100)
+  description String?   @db.VarChar(500)
+  scope       RoleScope
+  isSystem    Boolean   @default(false) @map("is_system")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace            Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  permissions          RolePermission[]
+  workspaceMemberships WorkspaceMembership[]
+  workspaceInvitations WorkspaceInvitation[]
+  projectMemberships   ProjectMembership[]
+  accessPolicies       AccessPolicy[]
+
+  @@unique([workspaceId, key])
+  @@unique([workspaceId, id])
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+/// A user's membership of a workspace with a WORKSPACE-scoped role.
+model WorkspaceMembership {
+  id          String           @id @default(uuid(7)) @db.Uuid
+  workspaceId String           @map("workspace_id") @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  roleId      String           @map("role_id") @db.Uuid
+  status      MembershipStatus @default(ACTIVE)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role               Role                @relation(fields: [workspaceId, roleId], references: [workspaceId, id], onDelete: NoAction, map: "workspace_memberships_role_fkey")
+  projectMemberships ProjectMembership[]
+  accessPolicies     AccessPolicy[]
+
+  @@unique([workspaceId, userId])
+  @@unique([workspaceId, id])
+  @@index([userId])
+  @@index([roleId])
+  @@map("workspace_memberships")
+}
+
+/// Pending invitation to join a workspace. Only a hash of the token is stored.
+model WorkspaceInvitation {
+  id           String           @id @default(uuid(7)) @db.Uuid
+  workspaceId  String           @map("workspace_id") @db.Uuid
+  /// Stored lower-cased (enforced by a CHECK constraint).
+  email        String           @db.VarChar(320)
+  roleId       String           @map("role_id") @db.Uuid
+  /// SHA-256 of the invitation token. The token itself is never persisted.
+  tokenHash    Bytes            @unique @map("token_hash")
+  status       InvitationStatus @default(PENDING)
+  expiresAt    DateTime         @map("expires_at") @db.Timestamptz(3)
+  invitedById  String?          @map("invited_by_id") @db.Uuid
+  acceptedById String?          @map("accepted_by_id") @db.Uuid
+  acceptedAt   DateTime?        @map("accepted_at") @db.Timestamptz(3)
+  revokedAt    DateTime?        @map("revoked_at") @db.Timestamptz(3)
+  declinedAt   DateTime?        @map("declined_at") @db.Timestamptz(3)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role       Role      @relation(fields: [workspaceId, roleId], references: [workspaceId, id], onDelete: NoAction, map: "workspace_invitations_role_fkey")
+  invitedBy  User?     @relation("InvitationInvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
+  acceptedBy User?     @relation("InvitationAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([email])
+  @@index([roleId])
+  @@map("workspace_invitations")
+}

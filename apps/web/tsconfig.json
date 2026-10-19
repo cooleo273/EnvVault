@@ -1,0 +1,18 @@
+{
+  "extends": "@envvault/config/tsconfig/nextjs.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "src",
+    "e2e",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "*.ts",
+    "e2e-auth"
+  ],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,97 @@
+/// Machine identity (CI/CD pipeline, service, CLI automation) owned by exactly
+/// one workspace and optionally confined to one project.
+model ServiceIdentity {
+  id          String                @id @default(uuid(7)) @db.Uuid
+  workspaceId String                @map("workspace_id") @db.Uuid
+  projectId   String?               @map("project_id") @db.Uuid
+  /// Unique per workspace among live identities (case-insensitive).
+  name        String                @db.VarChar(100)
+  description String?               @db.VarChar(1000)
+  status      ServiceIdentityStatus @default(ACTIVE)
+  createdById String?               @map("created_by_id") @db.Uuid
+  lastUsedAt  DateTime?             @map("last_used_at") @db.Timestamptz(3)
+  createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Soft delete: identities are referenced by secret history.
+  deletedAt   DateTime?             @map("deleted_at") @db.Timestamptz(3)
+
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project               Project?            @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "service_identities_project_fkey")
+  createdBy             User?               @relation("ServiceIdentityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  credentials           ServiceCredential[]
+  accessPolicies        AccessPolicy[]
+  secretsCreated        Secret[]            @relation("SecretCreatedByServiceIdentity")
+  secretsUpdated        Secret[]            @relation("SecretUpdatedByServiceIdentity")
+  secretVersionsCreated SecretVersion[]     @relation("SecretVersionCreatedByServiceIdentity")
+
+  @@unique([workspaceId, id])
+  @@index([projectId])
+  @@map("service_identities")
+}
+
+/// Credential for a service identity. Scoped to a single workspace through its
+/// identity: there is no cross-tenant or global privileged token. API tokens
+/// are stored as hashes only and must expire.
+model ServiceCredential {
+  id                String         @id @default(uuid(7)) @db.Uuid
+  workspaceId       String         @map("workspace_id") @db.Uuid
+  serviceIdentityId String         @map("service_identity_id") @db.Uuid
+  type              CredentialType
+  name              String         @db.VarChar(100)
+  /// Public, non-secret token prefix used to look up the credential.
+  tokenPrefix       String?        @unique @map("token_prefix") @db.VarChar(32)
+  /// Hash of the full token (the token is shown once and never stored).
+  secretHash        Bytes?         @map("secret_hash")
+  hashAlgorithm     String?        @map("hash_algorithm") @db.VarChar(32)
+  oidcIssuer        String?        @map("oidc_issuer") @db.VarChar(2048)
+  oidcSubject       String?        @map("oidc_subject") @db.VarChar(512)
+  oidcAudience      String?        @map("oidc_audience") @db.VarChar(512)
+  expiresAt         DateTime?      @map("expires_at") @db.Timestamptz(3)
+  lastUsedAt        DateTime?      @map("last_used_at") @db.Timestamptz(3)
+  revokedAt         DateTime?      @map("revoked_at") @db.Timestamptz(3)
+  revokedById       String?        @map("revoked_by_id") @db.Uuid
+  revocationReason  String?        @map("revocation_reason") @db.VarChar(500)
+  createdById       String?        @map("created_by_id") @db.Uuid
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  serviceIdentity ServiceIdentity @relation(fields: [workspaceId, serviceIdentityId], references: [workspaceId, id], onDelete: Cascade, map: "service_credentials_service_identity_fkey")
+  revokedBy       User?           @relation("ServiceCredentialRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  createdBy       User?           @relation("ServiceCredentialCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([serviceIdentityId])
+  @@index([oidcIssuer, oidcSubject])
+  @@map("service_credentials")
+}
+
+/// Environment-scoped grant of an ENVIRONMENT role to exactly one subject
+/// (a workspace member or a service identity). Access is default-deny: no
+/// matching ALLOW policy, membership or role means no access; DENY wins.
+model AccessPolicy {
+  id                    String       @id @default(uuid(7)) @db.Uuid
+  workspaceId           String       @map("workspace_id") @db.Uuid
+  projectId             String       @map("project_id") @db.Uuid
+  environmentId         String       @map("environment_id") @db.Uuid
+  workspaceMembershipId String?      @map("workspace_membership_id") @db.Uuid
+  serviceIdentityId     String?      @map("service_identity_id") @db.Uuid
+  roleId                String       @map("role_id") @db.Uuid
+  effect                PolicyEffect @default(ALLOW)
+  /// Optional end of a temporary grant.
+  expiresAt             DateTime?    @map("expires_at") @db.Timestamptz(3)
+  createdById           String?      @map("created_by_id") @db.Uuid
+  createdAt             DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  environment         Environment          @relation(fields: [workspaceId, projectId, environmentId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "access_policies_environment_fkey")
+  workspaceMembership WorkspaceMembership? @relation(fields: [workspaceId, workspaceMembershipId], references: [workspaceId, id], onDelete: Cascade, map: "access_policies_member_fkey")
+  serviceIdentity     ServiceIdentity?     @relation(fields: [workspaceId, serviceIdentityId], references: [workspaceId, id], onDelete: Cascade, map: "access_policies_service_identity_fkey")
+  role                Role                 @relation(fields: [workspaceId, roleId], references: [workspaceId, id], onDelete: NoAction, map: "access_policies_role_fkey")
+  createdBy           User?                @relation("AccessPolicyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([environmentId, workspaceMembershipId, roleId])
+  @@unique([environmentId, serviceIdentityId, roleId])
+  @@index([workspaceMembershipId])
+  @@index([serviceIdentityId])
+  @@index([roleId])
+  @@map("access_policies")
+}

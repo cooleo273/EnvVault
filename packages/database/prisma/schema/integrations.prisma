@@ -1,0 +1,89 @@
+/// Connection to an external platform (CI/CD, hosting, cloud secret store).
+/// Provider credentials, when needed, are envelope-encrypted; prefer
+/// app installations / federation that need no stored credential.
+model IntegrationConnection {
+  id                         String               @id @default(uuid(7)) @db.Uuid
+  workspaceId                String               @map("workspace_id") @db.Uuid
+  projectId                  String?              @map("project_id") @db.Uuid
+  provider                   IntegrationProvider
+  name                       String               @db.VarChar(100)
+  status                     IntegrationStatus    @default(ACTIVE)
+  /// Non-secret provider settings (repository, region, ...).
+  config                     Json                 @default("{}") @db.JsonB
+  /// External account/installation identifier (non-secret).
+  externalAccountId          String?              @map("external_account_id") @db.VarChar(255)
+  credentialCiphertext       Bytes?               @map("credential_ciphertext")
+  credentialIv               Bytes?               @map("credential_iv")
+  credentialAuthTag          Bytes?               @map("credential_auth_tag")
+  credentialEncryptedDataKey Bytes?               @map("credential_encrypted_data_key")
+  credentialAlgorithm        EncryptionAlgorithm? @map("credential_algorithm")
+  credentialEnvelopeVersion  Int?                 @map("credential_envelope_version")
+  encryptionKeyId            String?              @map("encryption_key_id") @db.Uuid
+  createdById                String?              @map("created_by_id") @db.Uuid
+  lastSyncedAt               DateTime?            @map("last_synced_at") @db.Timestamptz(3)
+  createdAt                  DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                  DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace        Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project          Project?               @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "integration_connections_project_fkey")
+  encryptionKey    EncryptionKey?         @relation(fields: [workspaceId, encryptionKeyId], references: [workspaceId, id], onDelete: NoAction, map: "integration_connections_encryption_key_fkey")
+  createdBy        User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  syncJobs         IntegrationSyncJob[]
+  rotationPolicies SecretRotationPolicy[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, provider, name])
+  @@index([projectId])
+  @@index([encryptionKeyId])
+  @@map("integration_connections")
+}
+
+/// One synchronisation run pushing an environment's configuration to an integration.
+model IntegrationSyncJob {
+  id                      String        @id @default(uuid(7)) @db.Uuid
+  workspaceId             String        @map("workspace_id") @db.Uuid
+  integrationConnectionId String        @map("integration_connection_id") @db.Uuid
+  projectId               String        @map("project_id") @db.Uuid
+  environmentId           String        @map("environment_id") @db.Uuid
+  status                  SyncJobStatus @default(QUEUED)
+  trigger                 SyncTrigger
+  attempt                 Int           @default(0)
+  scheduledAt             DateTime      @default(now()) @map("scheduled_at") @db.Timestamptz(3)
+  startedAt               DateTime?     @map("started_at") @db.Timestamptz(3)
+  finishedAt              DateTime?     @map("finished_at") @db.Timestamptz(3)
+  errorCode               String?       @map("error_code") @db.VarChar(64)
+  /// Sanitised summary; must never include secret values or provider tokens.
+  errorMessage            String?       @map("error_message") @db.VarChar(1000)
+  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  integrationConnection IntegrationConnection @relation(fields: [workspaceId, integrationConnectionId], references: [workspaceId, id], onDelete: Cascade, map: "integration_sync_jobs_integration_fkey")
+  environment           Environment           @relation(fields: [workspaceId, projectId, environmentId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "integration_sync_jobs_environment_fkey")
+
+  @@index([integrationConnectionId, createdAt])
+  @@index([environmentId])
+  @@index([status, scheduledAt])
+  @@map("integration_sync_jobs")
+}
+
+/// In-app notification for a user, optionally within a workspace context.
+model Notification {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  recipientId String    @map("recipient_id") @db.Uuid
+  workspaceId String?   @map("workspace_id") @db.Uuid
+  /// Dotted type key, e.g. `invitation.received`.
+  type        String    @db.VarChar(100)
+  title       String    @db.VarChar(200)
+  body        String?   @db.VarChar(2000)
+  /// Non-sensitive payload (identifiers, links). Never secret values.
+  data        Json      @default("{}") @db.JsonB
+  readAt      DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  recipient User       @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt, createdAt])
+  @@index([workspaceId])
+  @@map("notifications")
+}

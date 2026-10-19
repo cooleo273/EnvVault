@@ -1,0 +1,52 @@
+{
+  "name": "@envvault/database",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Prisma schema, migrations and database client factory. Server-side only.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "db:generate": "prisma generate",
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "db:validate": "prisma validate",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
+    "db:check-drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code",
+    "db:seed": "node dist/seed/run.js",
+    "db:studio": "prisma studio",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "db:sync-catalog": "node dist/catalog/sync-cli.js"
+  },
+  "dependencies": {
+    "@envvault/shared": "workspace:*",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0"
+  },
+  "devDependencies": {
+    "@envvault/config": "workspace:*",
+    "@types/node": "22.20.5",
+    "eslint": "10.12.0",
+    "prisma": "7.10.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}

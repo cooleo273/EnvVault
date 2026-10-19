@@ -1,0 +1,257 @@
+@import 'tailwindcss';
+
+/*
+ * EnvVault design tokens.
+ *
+ * - Colours are OKLCH and semantic: components reference roles (background,
+ *   border, status-danger, ...) never raw palette values.
+ * - Themes: light by default; `.dark` on <html> (set by next-themes from the
+ *   user's choice or OS preference) switches every token.
+ * - Tailwind utilities are generated from the @theme block below, e.g.
+ *   `bg-surface`, `text-muted-foreground`, `h-header`, `h-control`, `shadow-overlay`.
+ * - See src/design/tokens.ts for the typed counterparts (density, status...).
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Surfaces */
+  --background: oklch(0.993 0.001 260);
+  --foreground: oklch(0.21 0.006 260);
+  --surface: oklch(1 0 0);
+  --surface-muted: oklch(0.979 0.002 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+  --muted: oklch(0.965 0.003 260);
+  --muted-foreground: oklch(0.5 0.01 260);
+
+  /* Lines */
+  --border: oklch(0.918 0.004 260);
+  --border-strong: oklch(0.86 0.006 260);
+  --input: var(--border-strong);
+
+  /* Actions */
+  --primary: oklch(0.21 0.006 260);
+  --primary-foreground: oklch(0.985 0.002 260);
+  --secondary: oklch(0.962 0.003 260);
+  --secondary-foreground: var(--foreground);
+  --accent: oklch(0.955 0.004 260); /* hover / selected surfaces (shadcn convention) */
+  --accent-foreground: var(--foreground);
+  --brand: oklch(0.52 0.09 180); /* used sparingly: logo, links, focus */
+  --brand-foreground: oklch(0.99 0.004 180);
+  --ring: oklch(0.55 0.1 180);
+  --destructive: oklch(0.55 0.2 27);
+  --destructive-foreground: oklch(0.985 0.005 27);
+
+  /* Status (foreground / subtle background / border) */
+  --status-success: oklch(0.45 0.12 150);
+  --status-success-subtle: oklch(0.965 0.03 150);
+  --status-success-border: oklch(0.87 0.06 150);
+  --status-warning: oklch(0.48 0.11 65);
+  --status-warning-subtle: oklch(0.97 0.04 85);
+  --status-warning-border: oklch(0.87 0.08 80);
+  --status-danger: oklch(0.5 0.18 27);
+  --status-danger-subtle: oklch(0.97 0.02 25);
+  --status-danger-border: oklch(0.87 0.06 25);
+  --status-info: oklch(0.48 0.13 255);
+  --status-info-subtle: oklch(0.965 0.02 255);
+  --status-info-border: oklch(0.87 0.05 255);
+  --status-neutral: var(--muted-foreground);
+  --status-neutral-subtle: var(--muted);
+  --status-neutral-border: var(--border);
+
+  /* Elevation */
+  --shadow-color: 220 15% 20%;
+  --elevation-xs: 0 1px 2px 0 hsl(var(--shadow-color) / 0.05);
+  --elevation-sm:
+    0 1px 3px 0 hsl(var(--shadow-color) / 0.08), 0 1px 2px -1px hsl(var(--shadow-color) / 0.06);
+  --elevation-md:
+    0 4px 12px -2px hsl(var(--shadow-color) / 0.1), 0 2px 4px -2px hsl(var(--shadow-color) / 0.06);
+  --elevation-lg:
+    0 16px 40px -8px hsl(var(--shadow-color) / 0.18),
+    0 4px 12px -4px hsl(var(--shadow-color) / 0.08);
+
+  --overlay: oklch(0.15 0.01 260 / 0.45);
+
+  /* Sizes (exposed as spacing utilities in @theme below) */
+  --size-header: 3.5rem;
+  --size-sidebar: 15rem;
+  --size-control-sm: 2rem;
+  --size-control: 2.25rem;
+  --size-control-lg: 2.5rem;
+  --size-row-compact: 2.25rem;
+  --size-row-default: 2.75rem;
+  --size-row-comfortable: 3.25rem;
+  --size-content: 72rem;
+
+  /* Active table row height; switched by [data-density] */
+  --table-row-h: var(--size-row-default);
+}
+
+.dark {
+  --background: oklch(0.155 0.004 260);
+  --foreground: oklch(0.95 0.003 260);
+  --surface: oklch(0.183 0.005 260);
+  --surface-muted: oklch(0.168 0.004 260);
+  --popover: oklch(0.2 0.005 260);
+  --muted: oklch(0.225 0.005 260);
+  --muted-foreground: oklch(0.7 0.008 260);
+
+  --border: oklch(0.27 0.006 260);
+  --border-strong: oklch(0.34 0.008 260);
+
+  --primary: oklch(0.95 0.003 260);
+  --primary-foreground: oklch(0.18 0.005 260);
+  --secondary: oklch(0.235 0.005 260);
+  --accent: oklch(0.245 0.006 260);
+  --brand: oklch(0.74 0.11 178);
+  --brand-foreground: oklch(0.18 0.02 180);
+  --ring: oklch(0.7 0.1 178);
+  --destructive: oklch(0.6 0.19 25);
+  --destructive-foreground: oklch(0.985 0.005 25);
+
+  --status-success: oklch(0.78 0.13 152);
+  --status-success-subtle: oklch(0.255 0.045 152);
+  --status-success-border: oklch(0.37 0.07 152);
+  --status-warning: oklch(0.83 0.12 80);
+  --status-warning-subtle: oklch(0.27 0.045 75);
+  --status-warning-border: oklch(0.4 0.08 75);
+  --status-danger: oklch(0.76 0.14 25);
+  --status-danger-subtle: oklch(0.265 0.055 25);
+  --status-danger-border: oklch(0.39 0.09 25);
+  --status-info: oklch(0.79 0.1 252);
+  --status-info-subtle: oklch(0.255 0.045 255);
+  --status-info-border: oklch(0.38 0.07 255);
+
+  --shadow-color: 220 40% 2%;
+  --elevation-xs: 0 1px 2px 0 hsl(var(--shadow-color) / 0.3);
+  --elevation-sm: 0 1px 3px 0 hsl(var(--shadow-color) / 0.4);
+  --elevation-md: 0 6px 16px -4px hsl(var(--shadow-color) / 0.55);
+  --elevation-lg: 0 20px 48px -8px hsl(var(--shadow-color) / 0.7);
+
+  --overlay: oklch(0.08 0.005 260 / 0.65);
+}
+
+@theme inline {
+  /* Typography */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  /* Colours */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-overlay: var(--overlay);
+  --color-success: var(--status-success);
+  --color-success-subtle: var(--status-success-subtle);
+  --color-success-border: var(--status-success-border);
+  --color-warning: var(--status-warning);
+  --color-warning-subtle: var(--status-warning-subtle);
+  --color-warning-border: var(--status-warning-border);
+  --color-danger: var(--status-danger);
+  --color-danger-subtle: var(--status-danger-subtle);
+  --color-danger-border: var(--status-danger-border);
+  --color-info: var(--status-info);
+  --color-info-subtle: var(--status-info-subtle);
+  --color-info-border: var(--status-info-border);
+  --color-neutral: var(--status-neutral);
+  --color-neutral-subtle: var(--status-neutral-subtle);
+  --color-neutral-border: var(--status-neutral-border);
+
+  /* Radii */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  /* Elevation */
+  --shadow-xs: var(--elevation-xs);
+  --shadow-sm: var(--elevation-sm);
+  --shadow-popover: var(--elevation-md);
+  --shadow-overlay: var(--elevation-lg);
+
+  /* Layout and control sizing (generate h-*, w-*, min-h-* ... utilities) */
+  --spacing-header: var(--size-header);
+  --spacing-sidebar: var(--size-sidebar);
+  --spacing-control-sm: var(--size-control-sm);
+  --spacing-control: var(--size-control);
+  --spacing-control-lg: var(--size-control-lg);
+  --spacing-row-compact: var(--size-row-compact);
+  --spacing-row-default: var(--size-row-default);
+  --spacing-row-comfortable: var(--size-row-comfortable);
+  --spacing-content: var(--size-content);
+}
+
+/* Table density: set data-density on the table container. */
+[data-density='compact'] {
+  --table-row-h: var(--size-row-compact);
+}
+[data-density='default'] {
+  --table-row-h: var(--size-row-default);
+}
+[data-density='comfortable'] {
+  --table-row-h: var(--size-row-comfortable);
+}
+
+/* One focus treatment for every interactive element. Outline (not box-shadow)
+   stays visible in Windows high-contrast / forced-colors mode. */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-feature-settings: 'tnum' 0;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

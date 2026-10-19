@@ -1,0 +1,44 @@
+{
+  "name": "envvault",
+  "version": "0.0.0",
+  "private": true,
+  "description": "EnvVault - centralized environment variable and secrets management platform",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@11.1.2",
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=@envvault/web --filter=@envvault/api",
+    "dev:web": "turbo run dev --filter=@envvault/web",
+    "dev:api": "turbo run dev --filter=@envvault/api",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "test:integration": "turbo run test:integration --concurrency=1",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "turbo run clean",
+    "db:generate": "turbo run db:generate",
+    "infra:up": "docker compose -f infrastructure/docker/docker-compose.yml --env-file .env up -d",
+    "infra:down": "docker compose -f infrastructure/docker/docker-compose.yml --env-file .env down",
+    "infra:logs": "docker compose -f infrastructure/docker/docker-compose.yml --env-file .env logs -f",
+    "infra:ps": "docker compose -f infrastructure/docker/docker-compose.yml --env-file .env ps",
+    "db:migrate:dev": "pnpm --filter @envvault/database db:migrate:dev",
+    "db:migrate:deploy": "pnpm --filter @envvault/database db:migrate:deploy",
+    "db:migrate:status": "pnpm --filter @envvault/database db:migrate:status",
+    "db:check-drift": "pnpm --filter @envvault/database db:check-drift",
+    "db:seed": "turbo run build --filter=@envvault/database && pnpm --filter @envvault/database db:seed",
+    "test:e2e:auth": "turbo run test:e2e:auth",
+    "db:sync-catalog": "pnpm --filter @envvault/database db:sync-catalog"
+  },
+  "devDependencies": {
+    "@envvault/config": "workspace:*",
+    "prettier": "3.9.10",
+    "turbo": "2.11.7",
+    "typescript": "6.0.3"
+  }
+}

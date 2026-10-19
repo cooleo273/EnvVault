@@ -1,0 +1,45 @@
+import { expect, test } from '@playwright/test';
+
+test.describe('landing page', () => {
+  test('renders the main landmarks and heading', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text());
+    });
+
+    await page.goto('/');
+
+    await expect(page).toHaveTitle(/EnvVault/);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.getByRole('banner')).toBeVisible();
+    await expect(page.getByRole('main')).toBeVisible();
+    await expect(page.getByRole('contentinfo')).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test('exposes a keyboard-accessible skip link', async ({ page }) => {
+    await page.goto('/');
+    await page.keyboard.press('Tab');
+    const skipLink = page.getByRole('link', { name: 'Skip to main content' });
+    await expect(skipLink).toBeFocused();
+    await skipLink.press('Enter');
+    await expect(page).toHaveURL(/#main-content$/);
+  });
+
+  test('sends security headers', async ({ request }) => {
+    const response = await request.get('/');
+    const headers = response.headers();
+    expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
+    expect(headers['x-content-type-options']).toBe('nosniff');
+    expect(headers['x-frame-options']).toBe('DENY');
+    expect(headers['x-powered-by']).toBeUndefined();
+  });
+
+  test('has no horizontal overflow at mobile width', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto('/');
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    expect(scrollWidth).toBeLessThanOrEqual(375);
+  });
+});

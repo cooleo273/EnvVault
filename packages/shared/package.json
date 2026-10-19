@@ -1,0 +1,35 @@
+{
+  "name": "@envvault/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Framework-agnostic contracts shared by the EnvVault web app, API, CLI and SDK",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@envvault/config": "workspace:*",
+    "@types/node": "22.20.5",
+    "eslint": "10.12.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}

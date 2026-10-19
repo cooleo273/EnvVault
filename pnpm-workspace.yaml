@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Dependencies explicitly allowed to run install scripts (pnpm blocks all others).
+allowBuilds:
+  '@prisma/engines': true
+  # Only prints a funding banner; not needed.
+  core-js: false
+  prisma: true

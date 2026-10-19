@@ -1,0 +1,74 @@
+# ---------------------------------------------------------------
+# Secrets & local environment files — NEVER commit these.
+# Only *.example templates (placeholders only) are tracked.
+# ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+credentials.json
+service-account*.json
+*.secret
+*.secrets
+secrets/
+.secrets/
+.envrc
+.npmrc.local
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+.next/
+.next-e2e/
+*.tsbuildinfo
+next-env.d.ts
+
+# Generated code
+packages/database/src/generated/
+
+# Tooling caches
+.turbo/
+.eslintcache
+coverage/
+.vitest/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+
+# Docker local volumes
+infrastructure/docker/data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+
+# Playwright auth state (contains test session cookies)
+apps/web/e2e-auth/.auth/
