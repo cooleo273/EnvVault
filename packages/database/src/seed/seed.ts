@@ -38,9 +38,19 @@ export const SEED = {
     },
   ],
   secrets: [
-    { key: 'DATABASE_URL', type: 'CONNECTION_STRING', description: 'Primary database connection' },
-    { key: 'STRIPE_API_KEY', type: 'API_KEY', description: 'Payment provider key' },
-    { key: 'LOG_LEVEL', type: 'GENERIC', description: 'Application log level' },
+    {
+      key: 'DATABASE_URL',
+      type: 'SECRET',
+      category: 'Database',
+      description: 'Primary database connection',
+    },
+    {
+      key: 'STRIPE_API_KEY',
+      type: 'SECRET',
+      category: 'Payments',
+      description: 'Payment provider key',
+    },
+    { key: 'LOG_LEVEL', type: 'STRING', category: 'General', description: 'Application log level' },
   ],
   serviceIdentity: { name: 'ci-deployer', description: 'Sample CI/CD pipeline identity' },
 } as const satisfies {
@@ -51,6 +61,7 @@ export const SEED = {
   secrets: readonly {
     key: string;
     type: Prisma.SecretUncheckedCreateInput['type'];
+    category: string;
     description: string;
   }[];
   [key: string]: unknown;

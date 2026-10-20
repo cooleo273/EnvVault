@@ -1,6 +1,6 @@
 # EnvVault Architecture
 
-> Status: **Phase 3A — Self-managed encryption and key management** (on top of Phase 2 projects, environments and hierarchical authorization). This document describes the architecture as
+> Status: **Phase 3B: secrets CRUD and the variables dashboard** (on top of Phase 3A envelope encryption and Phase 2 projects, environments and hierarchical authorization). This document describes the architecture as
 > implemented today and the boundaries that later phases build on. Sections marked
 > _Planned_ describe intended designs that are not implemented yet.
 
@@ -124,6 +124,8 @@ src/
     logging/              pino-http configuration, request-ID resolution
   database/               DatabaseService (Prisma client lifecycle)
   health/                 GET /api/v1/health, GET /api/v1/health/ready
+  encryption/             EncryptionModule: key provider, SecretEncryptionService (no routes)
+  secrets/                SecretsModule: controller, SecretsService, SecretAuthorizationService
 ```
 
 New domains (workspaces, projects, environments, secrets) are added as feature modules
@@ -265,8 +267,9 @@ flow, constraint catalogue and deletion policy.
 
 Implemented in Phase 3A (`packages/crypto`, `apps/api/src/encryption`): envelope
 encryption with AES-256-GCM from `node:crypto`. Each secret version gets a fresh data
-key, and a key encryption key held by a `KeyManagementProvider` wraps it. Secret CRUD
-follows in Phase 3B.
+key, and a key encryption key held by a `KeyManagementProvider` wraps it. Since Phase 3B
+the secrets API ([secrets.md](secrets.md)) encrypts every value before its transaction
+starts and decrypts only in the audited reveal route.
 
 ```
  plaintext ──► SecretCipher.encryptSecret(value, {workspace, project, environment, secret, version})
@@ -369,8 +372,9 @@ developer's real database.
 
 ## 12. Known limitations
 
-- Authentication, workspaces, projects, environments, templates, project roles and
-  environment access grants are implemented. Secret CRUD is not (Phase 3).
+- Authentication, workspaces, projects, environments, templates, project roles,
+  environment access grants and secrets CRUD with encrypted versions are implemented.
+  Version history browsing, rollback, import and export are Phase 3C.
 - Protected-environment approvals are modelled (`required_approvals`, change request
   tables) but not enforced; no approval workflow runs yet.
 - The OpenAPI route table is registered by hand next to the controllers (kept honest by a
@@ -382,7 +386,10 @@ developer's real database.
   authentication-specific limitations (beta SDK; password reset does not revoke tokens
   that were already issued).
 - Only the self-managed local key provider exists (development and test); production
-  requires a managed KMS provider. Secret CRUD is not implemented yet (Phase 3B).
+  requires a managed KMS provider. Values must stay synthetic until then.
+- Encrypted versions are kept indefinitely; purge and retention policies are not
+  implemented. Reveals are rate limited only by the general per instance limit, and the
+  web server is the API's only client, so per user limits need a shared store first.
 - Rate limiting is per instance (in-memory).
 - Redis is provisioned locally but not used by the API yet.
 - No production deployment manifests yet (`infrastructure/deployment`).

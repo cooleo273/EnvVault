@@ -11,6 +11,7 @@ import { ProjectMemberRepository } from './project-member.repository.js';
 import { ProjectRepository } from './project.repository.js';
 import { TemplateRepository } from './template.repository.js';
 import { RoleRepository } from './role.repository.js';
+import { EncryptionKeyRepository, SecretRepository } from './secret.repository.js';
 import { UserRepository } from './user.repository.js';
 import { WorkspaceRepository } from './workspace.repository.js';
 
@@ -62,6 +63,17 @@ export {
   type InheritedAccessRecord,
   type ProjectMemberRecord,
 } from './project-member.repository.js';
+export {
+  EncryptionKeyRepository,
+  SecretRepository,
+  type NewSecretData,
+  type NewSecretVersion,
+  type SecretListQuery,
+  type SecretMetadataPatch,
+  type SecretRecord,
+  type SecretSort,
+  type StoredSecretVersion,
+} from './secret.repository.js';
 export { TemplateRepository, type TemplateRecord } from './template.repository.js';
 export { UserRepository, type UserProfile, type VerifiedIdentity } from './user.repository.js';
 export {
@@ -95,6 +107,8 @@ export function createRepositories(db: DbClient) {
     templates: new TemplateRepository(db),
     roles: new RoleRepository(db),
     environments: new EnvironmentRepository(db),
+    encryptionKeys: new EncryptionKeyRepository(db),
+    secrets: new SecretRepository(db),
     users: new UserRepository(db),
     workspaces: new WorkspaceRepository(db),
   };

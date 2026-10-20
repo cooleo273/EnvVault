@@ -26,6 +26,15 @@ const ACTIONS: Record<string, string> = {
   'environment.deleted': 'deleted an environment',
   'environment.access_granted': 'granted environment access',
   'environment.access_revoked': 'revoked environment access',
+  'secret.created': 'added a variable',
+  'secret.updated': 'updated a variable',
+  'secret.value_changed': 'changed a variable value',
+  'secret.revealed': 'revealed a variable value',
+  'secret.deleted': 'deleted a variable',
+  'secret.restored': 'restored a variable',
+  'secret.access_denied': 'was refused access to a variable',
+  'secret.encryption_failed': 'could not store a value (encryption failed)',
+  'secret.decryption_failed': 'could not read a value (decryption failed)',
 };
 
 function str(value: unknown): string | null {
@@ -38,6 +47,11 @@ function detail(event: ActivityEvent): string | null {
   if (str(m.renamedFrom) && str(m.renamedTo))
     return `${String(m.renamedFrom)} → ${String(m.renamedTo)}`;
   if (str(m.name)) return String(m.name);
+  if (str(m.key)) {
+    return typeof m.version === 'number'
+      ? `${String(m.key)} (v${String(m.version)})`
+      : String(m.key);
+  }
   if (str(m.from) && str(m.to)) return `${String(m.from)} → ${String(m.to)}`;
   if (str(m.role)) return `${String(m.role)}${str(m.effect) ? ` (${String(m.effect)})` : ''}`;
   if (Array.isArray(m.fields))

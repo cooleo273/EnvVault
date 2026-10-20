@@ -13,9 +13,9 @@ export interface FormFieldControlProps {
 
 export interface FormFieldProps {
   label: string;
-  description?: React.ReactNode;
+  description?: React.ReactNode | undefined;
   /** Validation message. Never echo the submitted value if it may be sensitive. */
-  error?: string;
+  error?: string | undefined;
   required?: boolean;
   /** Explicit control id; generated when omitted. */
   id?: string;

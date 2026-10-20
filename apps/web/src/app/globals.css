@@ -255,3 +255,20 @@
     }
   }
 }
+
+/*
+ * Hidden secret drafts in multi line fields. Browsers with text-security draw
+ * discs; elsewhere the text is transparent while the caret stays visible.
+ */
+@layer components {
+  .secret-input-hidden {
+    color: transparent;
+    caret-color: var(--foreground);
+  }
+  @supports (-webkit-text-security: disc) {
+    .secret-input-hidden {
+      color: inherit;
+      -webkit-text-security: disc;
+    }
+  }
+}

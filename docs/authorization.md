@@ -63,28 +63,28 @@ unit-tested and also covered by mutation-checked API integration tests.
 
 ### Project roles (per project membership)
 
-| Permission                                                                | Project Admin | Developer | Viewer | Deployment Operator |
-| ------------------------------------------------------------------------- | :-----------: | :-------: | :----: | :-----------------: |
-| `project:read`, `project_member:read`, `environment:read`, `secret:list`  |       ✓       |     ✓     |   ✓    |          ✓          |
-| `project:update`, `project:archive`, `project:delete`                     |       ✓       |           |        |                     |
-| `project_member:manage`, `access_policy:manage`                           |       ✓       |           |        |                     |
-| `environment:create/update/delete/protect`                                |       ✓       |           |        |                     |
-| `secret:read`, `secret:write` (Phase 3; unprotected only)                 |       ✓       |     ✓     |        |                     |
-| `secret:delete`, `secret:rollback`, approvals (Phase 3; unprotected only) |       ✓       |           |        |                     |
-| `environment:deploy` (future machine credentials; unprotected only)       |               |           |        |          ✓          |
+| Permission                                                               | Project Admin | Developer | Viewer | Deployment Operator |
+| ------------------------------------------------------------------------ | :-----------: | :-------: | :----: | :-----------------: |
+| `project:read`, `project_member:read`, `environment:read`, `secret:list` |       ✓       |     ✓     |   ✓    |          ✓          |
+| `project:update`, `project:archive`, `project:delete`                    |       ✓       |           |        |                     |
+| `project_member:manage`, `access_policy:manage`                          |       ✓       |           |        |                     |
+| `environment:create/update/delete/protect`                               |       ✓       |           |        |                     |
+| `secret:read`, `secret:write` (unprotected only)                         |       ✓       |     ✓     |        |                     |
+| `secret:delete`, `secret:rollback`, approvals (unprotected only)         |       ✓       |           |        |                     |
+| `environment:deploy` (future machine credentials; unprotected only)      |               |           |        |          ✓          |
 
 Creating a project makes the creator its **Project Admin**.
 
 ### Environment roles (granted per environment, ALLOW or DENY)
 
-| Role            | Permissions                                                             |
-| --------------- | ----------------------------------------------------------------------- |
-| Metadata viewer | `environment:read`                                                      |
-| Maintainer      | `environment:read`, `environment:update`                                |
-| Deployer        | `environment:read`, `secret:list`, `environment:deploy`                 |
-| Secret reader   | `environment:read`, `secret:list`, `secret:read` (Phase 3)              |
-| Secret writer   | plus `secret:write`, `secret:delete`, `change_request:create` (Phase 3) |
-| Approver        | `environment:read`, `secret:list`, `change_request:review` (future)     |
+| Role            | Permissions                                                         |
+| --------------- | ------------------------------------------------------------------- |
+| Metadata viewer | `environment:read`                                                  |
+| Maintainer      | `environment:read`, `environment:update`                            |
+| Deployer        | `environment:read`, `secret:list`, `environment:deploy`             |
+| Secret reader   | `environment:read`, `secret:list`, `secret:read`                    |
+| Secret writer   | plus `secret:write`, `secret:delete`, `change_request:create`       |
+| Approver        | `environment:read`, `secret:list`, `change_request:review` (future) |
 
 Examples:
 
@@ -101,8 +101,8 @@ Examples:
 | Edit environment metadata          | `environment:update`             |
 | Manage protection                  | `environment:protect`            |
 | Manage environment access (grants) | `access_policy:manage`           |
-| Read secret values (Phase 3)       | `secret:read`                    |
-| Write secret values (Phase 3)      | `secret:write`                   |
+| Read secret values                 | `secret:read`                    |
+| Write secret values                | `secret:write`                   |
 | Deploy with machine credentials    | `environment:deploy` (future)    |
 | Approve protected changes          | `change_request:review` (future) |
 
@@ -122,11 +122,24 @@ Examples:
   grants (cascade). Removing someone from a project removes their grants in that
   project.
 
-## 6. Extending in Phase 3
+## 6. Secret permissions (Phase 3B)
 
-Secret routes will use `@RequireEnvironmentPermission('secret:read')` and similar
-decorators. The evaluator already applies protection and DENY rules to `secret:*`, so
-production values are reachable only through explicit grants. New permissions belong in
-`packages/shared/src/domain/permissions.ts`. Classify each as project-, environment- or
-data-plane-scoped in `access.ts`, then run `pnpm db:sync-catalog` to update existing
-workspaces.
+Secret routes are guarded by `@RequireEnvironmentPermission('secret:list')`; the data plane
+permission of each operation is checked by `SecretAuthorizationService`, which audits every
+refusal as `secret.access_denied`. The catalog names are unchanged:
+
+| Operation              | Permission      | Inherited into protected environments |
+| ---------------------- | --------------- | :-----------------------------------: |
+| List and read metadata | `secret:list`   |                  yes                  |
+| Reveal a value         | `secret:read`   |      no (explicit grant needed)       |
+| Create, update         | `secret:write`  |      no (explicit grant needed)       |
+| Delete, restore        | `secret:delete` |      no (explicit grant needed)       |
+
+Revealing a value of a protected environment additionally needs a recent password step up
+(`STEP_UP_REQUIRED` otherwise). Workspace roles carry no `secret:*` permission at all, so an
+Owner or Admin who is not a project member cannot even list variables. See
+[secrets.md](secrets.md) for the full API.
+
+New permissions belong in `packages/shared/src/domain/permissions.ts`. Classify each as
+project, environment or data plane scoped in `access.ts`, then run `pnpm db:sync-catalog` to
+update existing workspaces.

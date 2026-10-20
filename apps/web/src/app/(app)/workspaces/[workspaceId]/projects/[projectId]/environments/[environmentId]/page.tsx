@@ -1,24 +1,39 @@
-import { PERMISSIONS, type PermissionKey } from '@envvault/shared';
-import { KeyRound } from 'lucide-react';
+import {
+  PERMISSIONS,
+  type PermissionKey,
+  SECRET_SORTS,
+  SECRET_TYPES,
+  type SecretList,
+  type SecretType,
+} from '@envvault/shared';
+import { EyeOff } from 'lucide-react';
 import type { Metadata } from 'next';
 import { EmptyState } from '@/components/feedback/states';
-import { StatusBadge } from '@/components/feedback/status-badge';
+import { VariablesPanel } from '@/features/secrets/variables-panel';
+import { withApi } from '@/lib/api/server-api';
 import { getEnvironment } from '@/lib/projects/server';
 
 export const metadata: Metadata = { title: 'Environment' };
 
 const dateFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium' });
 
+type SearchParams = Record<string, string | string[] | undefined>;
+
+const one = (value: string | string[] | undefined) =>
+  typeof value === 'string' ? value : undefined;
+const list = (value: string | string[] | undefined) =>
+  (one(value) ?? '').split(',').filter(Boolean);
+
 /**
- * Environment details. The variables area is where the Phase 3 secrets table
- * will live; until then it states plainly that no values exist yet.
+ * Environment overview: the variables table (one page of metadata from the
+ * API; values are fetched one at a time on reveal) and environment details.
  */
 export default async function EnvironmentPage({
   params,
   searchParams,
 }: {
   params: Promise<{ workspaceId: string; projectId: string; environmentId: string }>;
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const [{ workspaceId, projectId, environmentId }, query] = await Promise.all([
     params,
@@ -26,10 +41,46 @@ export default async function EnvironmentPage({
   ]);
   const environment = await getEnvironment(workspaceId, projectId, environmentId);
   const secretPermissions = environment.permissions.filter((p) => p.startsWith('secret:'));
+  const canList = environment.permissions.includes('secret:list');
+
+  let secrets: SecretList | null = null;
+  let missingKeys: string[] = [];
+  if (canList) {
+    const page = Math.max(1, Number.parseInt(one(query.page) ?? '1', 10) || 1);
+    const sort = SECRET_SORTS.find((s) => s === one(query.sort)) ?? 'name';
+    const types = list(query.type).filter((t): t is SecretType =>
+      (SECRET_TYPES as readonly string[]).includes(t),
+    );
+    const [current, live] = await Promise.all([
+      withApi((api) =>
+        api.listSecrets(workspaceId, projectId, environmentId, {
+          page,
+          pageSize: 50,
+          sort,
+          status: one(query.status) === 'deleted' ? 'deleted' : 'active',
+          ...(one(query.q) ? { q: one(query.q) } : {}),
+          ...(types.length ? { type: types } : {}),
+          ...(list(query.category).length ? { category: list(query.category) } : {}),
+          ...(one(query.tag) ? { tag: one(query.tag) } : {}),
+        }),
+      ).catch(() => null),
+      // Template keys are compared with the live names, independent of the filters on screen.
+      environment.expectedKeys.length > 0
+        ? withApi((api) =>
+            api.listSecrets(workspaceId, projectId, environmentId, { pageSize: 100 }),
+          ).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    secrets = current;
+    if (live && live.total <= live.items.length) {
+      const names = new Set(live.items.map((s) => s.key));
+      missingKeys = environment.expectedKeys.map((k) => k.key).filter((k) => !names.has(k));
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      {query.created ? (
+      {one(query.created) ? (
         <p
           role="status"
           className="rounded-md border border-success-border bg-success-subtle px-3 py-2 text-sm text-success"
@@ -38,40 +89,31 @@ export default async function EnvironmentPage({
         </p>
       ) : null}
 
-      <section aria-labelledby="variables-heading" className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
+      {canList ? (
+        <VariablesPanel
+          workspaceId={workspaceId}
+          projectId={projectId}
+          environmentId={environmentId}
+          list={secrets}
+          permissions={environment.permissions}
+          isProtected={environment.isProtected}
+          archived={environment.status === 'ARCHIVED'}
+          missingKeys={missingKeys}
+        />
+      ) : (
+        <section aria-labelledby="variables-heading" className="flex flex-col gap-2">
           <h3 id="variables-heading" className="text-sm font-semibold">
             Variables
           </h3>
-          <StatusBadge tone="neutral" label="Coming in the next phase" dot={false} />
-        </div>
-        <div className="rounded-lg border bg-surface">
-          <EmptyState
-            icon={KeyRound}
-            title="No variables have been configured yet"
-            description="Secrets management (encrypted values, versions and history) arrives in the next phase. Nothing is stored for this environment today."
-          />
-          {environment.expectedKeys.length > 0 ? (
-            <div className="border-t px-4 py-3">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">
-                Expected keys from the template ({environment.expectedKeys.length}) — names only, no
-                values
-              </p>
-              <ul className="flex flex-wrap gap-1.5">
-                {environment.expectedKeys.map((k) => (
-                  <li
-                    key={k.key}
-                    title={k.description}
-                    className="rounded-sm border bg-surface-muted px-1.5 py-0.5 font-mono text-xs"
-                  >
-                    {k.key}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </div>
-      </section>
+          <div className="rounded-lg border bg-surface">
+            <EmptyState
+              icon={EyeOff}
+              title="You cannot see this environment's variables"
+              description="Ask a project admin for a project role or an environment grant that includes secret:list."
+            />
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section aria-labelledby="details-heading" className="rounded-lg border bg-surface">

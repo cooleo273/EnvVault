@@ -18,6 +18,7 @@ import {
 import { EncryptionModule } from './encryption/encryption.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
+import { SecretsModule } from './secrets/secrets.module.js';
 import { WorkspacesModule } from './workspaces/workspaces.module.js';
 
 export interface AppModuleOptions {
@@ -65,6 +66,7 @@ export class AppModule {
         AuthModule,
         WorkspacesModule,
         ProjectsModule,
+        SecretsModule,
       ],
       providers: [
         // Global guards run in this order: rate limit, authenticate, authorize.

@@ -7,6 +7,7 @@ import request from 'supertest';
 import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/app.setup.js';
 import { parseEnv } from '../../src/config/env.js';
+import type { EncryptionRuntime } from '../../src/encryption/encryption.config.js';
 import { FakeNeonAuth } from './fake-neon-auth.js';
 
 export interface TestUser {
@@ -29,7 +30,11 @@ export class Harness {
     readonly neon: FakeNeonAuth,
   ) {}
 
-  static async start(envOverrides: Record<string, string> = {}): Promise<Harness> {
+  /** `encryption` defaults to disabled, as in an API started without ENCRYPTION_PROVIDER. */
+  static async start(
+    envOverrides: Record<string, string> = {},
+    options: { encryption?: EncryptionRuntime } = {},
+  ): Promise<Harness> {
     const neon = await FakeNeonAuth.start();
     const env = parseEnv({
       NODE_ENV: 'test',
@@ -42,7 +47,9 @@ export class Harness {
       ...envOverrides,
     });
     const moduleRef = await Test.createTestingModule({
-      imports: [AppModule.register(env)],
+      imports: [
+        AppModule.register(env, options.encryption ? { encryption: options.encryption } : {}),
+      ],
     }).compile();
     const app = moduleRef.createNestApplication<NestExpressApplication>({
       bodyParser: false,
