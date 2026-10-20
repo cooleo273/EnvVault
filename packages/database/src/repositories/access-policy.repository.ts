@@ -123,4 +123,15 @@ export class AccessPolicyRepository {
     });
     return result.count === 1;
   }
+
+  /** Removes every grant of one workspace member inside a project. */
+  async removeAllForMember(
+    scope: { workspaceId: string; projectId: string },
+    workspaceMembershipId: string,
+  ): Promise<number> {
+    const result = await this.db.accessPolicy.deleteMany({
+      where: { workspaceId: scope.workspaceId, projectId: scope.projectId, workspaceMembershipId },
+    });
+    return result.count;
+  }
 }

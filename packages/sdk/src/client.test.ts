@@ -109,6 +109,42 @@ describe('EnvVaultClient (authenticated)', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe('http://localhost:4000/api/v1/users/me');
   });
 
+  it('builds project and environment paths and query strings', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })));
+    const client = createEnvVaultClient({
+      baseUrl: 'http://localhost:4000',
+      fetch: fetchMock,
+      getAccessToken: () => Promise.resolve('t'),
+    });
+    await client.setProjectFavorite('w', 'p', true);
+    await client.setProjectFavorite('w', 'p', false);
+    await client.reorderEnvironments('w', 'p', ['a', 'b']);
+    await client.deleteEnvironment('w', 'p', 'e/1');
+    const calls = fetchMock.mock.calls.map(([url, init]) => [url, init?.method]);
+    expect(calls).toEqual([
+      ['http://localhost:4000/api/v1/workspaces/w/projects/p/favorite', 'PUT'],
+      ['http://localhost:4000/api/v1/workspaces/w/projects/p/favorite', 'DELETE'],
+      ['http://localhost:4000/api/v1/workspaces/w/projects/p/environments/order', 'PUT'],
+      ['http://localhost:4000/api/v1/workspaces/w/projects/p/environments/e%2F1', 'DELETE'],
+    ]);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { items: [], page: 2, pageSize: 10, total: 0 }),
+    );
+    await client.listProjects('w', {
+      q: 'pay ments',
+      status: 'all',
+      page: 2,
+      pageSize: 10,
+      sort: undefined,
+    });
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe(
+      'http://localhost:4000/api/v1/workspaces/w/projects?q=pay+ments&status=all&page=2&pageSize=10',
+    );
+  });
+
   it('builds workspace-scoped paths with encoded ids and the right verbs', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
     const client = createEnvVaultClient({
