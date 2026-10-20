@@ -163,6 +163,19 @@ export function ProjectMemberManager({
             </ul>
           )}
 
+          {/* Outside the form: the form disappears once everyone is a member. */}
+          {state.message ? (
+            <p
+              role={state.status === 'error' ? 'alert' : 'status'}
+              className={
+                state.status === 'error'
+                  ? 'rounded-md border border-danger-border bg-danger-subtle px-3 py-2 text-sm text-danger'
+                  : 'rounded-md border border-success-border bg-success-subtle px-3 py-2 text-sm text-success'
+              }
+            >
+              {state.message}
+            </p>
+          ) : null}
           {canManage ? (
             addable.length > 0 ? (
               <form
@@ -205,14 +218,6 @@ export function ProjectMemberManager({
                 <Button type="submit" disabled={pending} aria-busy={pending}>
                   {pending ? 'Adding…' : 'Add to project'}
                 </Button>
-                {state.message ? (
-                  <p
-                    role={state.status === 'error' ? 'alert' : 'status'}
-                    className={`text-sm sm:col-span-3 ${state.status === 'error' ? 'text-danger' : 'text-success'}`}
-                  >
-                    {state.message}
-                  </p>
-                ) : null}
               </form>
             ) : (
               <p className="text-xs text-muted-foreground">

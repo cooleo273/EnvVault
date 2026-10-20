@@ -16,6 +16,7 @@ import { FormField } from '@/components/forms/form-field';
 import { SettingsRow, SettingsSection } from '@/components/layout/settings-section';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SwitchField } from '@/components/ui/switch';
 import { NativeSelect } from '@/components/ui/textarea';
 import { reportAction } from '@/lib/action-result';
 import { type FormState, INITIAL_FORM_STATE } from '@/lib/form-state';
@@ -126,23 +127,13 @@ export function EnvironmentProtectionSettings({
           >
             <form action={action} className="flex flex-col gap-4" noValidate>
               {state.status === 'error' ? <Message state={state} /> : null}
-              <label className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  name="isProtected"
-                  checked={isProtected}
-                  onChange={(e) => {
-                    setIsProtected(e.target.checked);
-                  }}
-                  className="mt-0.5 size-4"
-                />
-                <span className="flex flex-col text-sm">
-                  <span className="font-medium">Protected environment</span>
-                  <span className="text-xs text-muted-foreground">
-                    Data-plane access (secret values, deployments) must be granted explicitly here.
-                  </span>
-                </span>
-              </label>
+              <SwitchField
+                name="isProtected"
+                checked={isProtected}
+                onCheckedChange={setIsProtected}
+                label="Protected environment"
+                description="Data-plane access (secret values, deployments) must be granted explicitly here."
+              />
               <FormField
                 label="Required approvals (planned)"
                 description="Stored for the change-approval workflow of a later phase. Not enforced yet."

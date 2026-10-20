@@ -1,6 +1,6 @@
 # EnvVault Architecture
 
-> Status: **Phase 1 — Authentication (Neon Auth) and workspace authorization.** This document describes the architecture as
+> Status: **Phase 2 — Projects, custom environments and hierarchical authorization.** This document describes the architecture as
 > implemented today and the boundaries that later phases build on. Sections marked
 > _Planned_ describe intended designs that are not implemented yet.
 
@@ -322,6 +322,16 @@ See [authentication.md](authentication.md) for the full design.
 - Workspace management (roles, members, invitations, archive, ownership transfer,
   onboarding) is described in [workspaces.md](workspaces.md). Workspace roles never grant
   secret access; that is reserved for project and environment roles and access policies.
+- Projects and environments add two levels below the workspace:
+  `@RequireProjectPermission` and `@RequireEnvironmentPermission`. The guard resolves the
+  workspace → project → environment chain in one query (404 outside the chain, 409 when
+  archived) and evaluates permissions with the pure evaluator in
+  `packages/shared/src/domain/access.ts`: project roles, per-environment ALLOW/DENY
+  grants (DENY wins), and protected environments that never inherit data-plane
+  permissions. See [authorization.md](authorization.md), [projects.md](projects.md) and
+  [environments.md](environments.md).
+- The API publishes an OpenAPI 3.0 document at `GET /api/v1/openapi.json`, generated from
+  the request schemas; a test fails if a route is registered but not documented.
 - Machine identities (CLI, CI/CD) will use scoped, expiring credentials (later phase).
 
 ## 9. Testing strategy
@@ -374,8 +384,12 @@ developer's real database.
 
 ## 12. Known limitations
 
-- Authentication, workspace management, members, invitations and workspace RBAC are
-  implemented. Project, environment and secret CRUD are not (Phase 2).
+- Authentication, workspaces, projects, environments, templates, project roles and
+  environment access grants are implemented. Secret CRUD is not (Phase 3).
+- Protected-environment approvals are modelled (`required_approvals`, change request
+  tables) but not enforced; no approval workflow runs yet.
+- The OpenAPI route table is registered by hand next to the controllers (kept honest by a
+  test), not derived from decorators.
 - Outbound email is not configured: invitation links are shared manually (see
   [workspaces.md §4](workspaces.md#4-invitations)). Workspace logos need approved object
   storage.

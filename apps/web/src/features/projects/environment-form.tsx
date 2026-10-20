@@ -12,6 +12,7 @@ import { useActionState, useState } from 'react';
 import { FormField } from '@/components/forms/form-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SwitchField } from '@/components/ui/switch';
 import { NativeSelect, Textarea } from '@/components/ui/textarea';
 import { previewSlug } from '@/features/workspaces/create-workspace-form';
 import { type FormState, INITIAL_FORM_STATE } from '@/lib/form-state';
@@ -214,26 +215,17 @@ export function EnvironmentForm(props: Props) {
         )}
       </FormField>
       {props.mode === 'create' ? (
-        <label className="flex items-start gap-3 rounded-md border bg-surface-muted p-3">
-          <input
-            type="checkbox"
-            name="isProtected"
-            checked={values.isProtected}
-            disabled={!props.canProtect}
-            onChange={(e) => {
-              set('isProtected', e.target.checked);
-            }}
-            className="mt-0.5 size-4"
-          />
-          <span className="flex flex-col gap-0.5 text-sm">
-            <span className="font-medium">Protected environment</span>
-            <span className="text-xs text-muted-foreground">
-              Changes need the environment:protect permission, and secret access is never inherited
-              from project roles. Recommended for production.
-              {props.canProtect ? '' : ' You cannot create protected environments in this project.'}
-            </span>
-          </span>
-        </label>
+        <SwitchField
+          name="isProtected"
+          checked={values.isProtected}
+          disabled={!props.canProtect}
+          onCheckedChange={(checked) => {
+            set('isProtected', checked);
+          }}
+          className="rounded-md border bg-surface-muted p-3"
+          label="Protected environment"
+          description={`Changes need the environment:protect permission, and secret access is never inherited from project roles. Recommended for production.${props.canProtect ? '' : ' You cannot create protected environments in this project.'}`}
+        />
       ) : null}
       <div className="flex justify-end">
         <Button type="submit" disabled={pending || disabled} aria-busy={pending}>

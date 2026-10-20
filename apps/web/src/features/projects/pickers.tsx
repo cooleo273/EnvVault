@@ -9,11 +9,68 @@ import {
   type VisualIcon,
 } from '@envvault/shared';
 import { Check, ShieldCheck } from 'lucide-react';
+import type * as React from 'react';
 import { cn } from '@/lib/utils';
 import { templateChoices } from './templates';
 import { COLOR_CLASSES, ICONS } from './visual';
 
 export { templateChoices };
+
+/**
+ * Radio group rendered from React state (`role="radio"` buttons). The value is
+ * submitted through a hidden input, so React's post-action form reset can
+ * never submit a different value than the one shown.
+ */
+function ChoiceGroup<T extends string>({
+  name,
+  label,
+  value,
+  options,
+  onChange,
+  renderOption,
+  optionClassName,
+}: {
+  name: string;
+  label: string;
+  value: string;
+  options: readonly T[];
+  onChange: (value: T) => void;
+  renderOption: (option: T, selected: boolean) => React.ReactNode;
+  optionClassName: (option: T, selected: boolean) => string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span id={`${name}-label`} className="mb-1.5 text-sm font-medium">
+        {label}
+      </span>
+      <input type="hidden" name={name} value={value} />
+      <div role="radiogroup" aria-labelledby={`${name}-label`} className="flex flex-wrap gap-1.5">
+        {options.map((option) => {
+          const selected = value === option;
+          return (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              aria-label={option}
+              title={option}
+              onClick={() => {
+                onChange(option);
+              }}
+              className={cn(
+                'focus-ring grid cursor-pointer place-items-center',
+                optionClassName(option, selected),
+              )}
+            >
+              {renderOption(option, selected)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function ColorPicker({
   name,
@@ -27,34 +84,17 @@ export function ColorPicker({
   label?: string;
 }) {
   return (
-    <fieldset className="flex flex-col gap-1.5">
-      <legend className="mb-1.5 text-sm font-medium">{label}</legend>
-      <div className="flex flex-wrap gap-1.5">
-        {VISUAL_COLORS.map((color) => (
-          <label
-            key={color}
-            className={cn(
-              'grid size-7 cursor-pointer place-items-center rounded-full has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring',
-              COLOR_CLASSES[color].swatch,
-            )}
-            title={color}
-          >
-            <input
-              type="radio"
-              name={name}
-              value={color}
-              checked={value === color}
-              onChange={() => {
-                onChange(color);
-              }}
-              className="sr-only"
-              aria-label={color}
-            />
-            {value === color ? <Check aria-hidden="true" className="size-3.5 text-white" /> : null}
-          </label>
-        ))}
-      </div>
-    </fieldset>
+    <ChoiceGroup
+      name={name}
+      label={label}
+      value={value}
+      options={VISUAL_COLORS}
+      onChange={onChange}
+      optionClassName={(color) => cn('size-7 rounded-full', COLOR_CLASSES[color].swatch)}
+      renderOption={(_color, selected) =>
+        selected ? <Check aria-hidden="true" className="size-3.5 text-white" /> : null
+      }
+    />
   );
 }
 
@@ -70,37 +110,23 @@ export function IconPicker({
   label?: string;
 }) {
   return (
-    <fieldset className="flex flex-col gap-1.5">
-      <legend className="mb-1.5 text-sm font-medium">{label}</legend>
-      <div className="flex flex-wrap gap-1">
-        {VISUAL_ICONS.map((icon) => {
-          const Icon = ICONS[icon];
-          return (
-            <label
-              key={icon}
-              title={icon}
-              className={cn(
-                'grid size-8 cursor-pointer place-items-center rounded-md border text-muted-foreground has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring',
-                value === icon ? 'border-brand bg-accent text-foreground' : 'hover:bg-accent',
-              )}
-            >
-              <input
-                type="radio"
-                name={name}
-                value={icon}
-                checked={value === icon}
-                onChange={() => {
-                  onChange(icon);
-                }}
-                className="sr-only"
-                aria-label={icon}
-              />
-              <Icon aria-hidden="true" className="size-4" />
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
+    <ChoiceGroup
+      name={name}
+      label={label}
+      value={value}
+      options={VISUAL_ICONS}
+      onChange={onChange}
+      optionClassName={(_icon, selected) =>
+        cn(
+          'size-8 rounded-md border text-muted-foreground',
+          selected ? 'border-brand bg-accent text-foreground' : 'hover:bg-accent',
+        )
+      }
+      renderOption={(icon) => {
+        const Icon = ICONS[icon];
+        return <Icon aria-hidden="true" className="size-4" />;
+      }}
+    />
   );
 }
 

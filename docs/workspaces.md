@@ -13,25 +13,26 @@ Each workspace gets its own copy of four built-in roles (`roles.is_system = true
 catalog lives in `packages/database/src/catalog/roles.ts` and is enforced only by the
 API.
 
-| Permission           | Owner | Admin | Member | Viewer |
-| -------------------- | :---: | :---: | :----: | :----: |
-| `workspace:read`     |   ✓   |   ✓   |   ✓    |   ✓    |
-| `member:read`        |   ✓   |   ✓   |   ✓    |   ✓    |
-| `workspace:update`   |   ✓   |   ✓   |        |        |
-| `member:invite`      |   ✓   |   ✓   |        |        |
-| `member:manage`      |   ✓   |   ✓   |        |        |
-| `audit:read`         |   ✓   |   ✓   |        |        |
-| `role:manage`        |   ✓   |       |        |        |
-| `workspace:archive`  |   ✓   |       |        |        |
-| `workspace:delete`   |   ✓   |       |        |        |
-| `workspace:transfer` |   ✓   |       |        |        |
+| Permission                                                       | Owner | Admin | Member | Viewer |
+| ---------------------------------------------------------------- | :---: | :---: | :----: | :----: |
+| `workspace:read`                                                 |   ✓   |   ✓   |   ✓    |   ✓    |
+| `member:read`                                                    |   ✓   |   ✓   |   ✓    |   ✓    |
+| `workspace:update`                                               |   ✓   |   ✓   |        |        |
+| `member:invite`                                                  |   ✓   |   ✓   |        |        |
+| `member:manage`                                                  |   ✓   |   ✓   |        |        |
+| `audit:read`                                                     |   ✓   |   ✓   |        |        |
+| `role:manage`                                                    |   ✓   |       |        |        |
+| `workspace:archive`                                              |   ✓   |       |        |        |
+| `workspace:delete`                                               |   ✓   |       |        |        |
+| `workspace:transfer`                                             |   ✓   |       |        |        |
+| `project:create`                                                 |   ✓   |   ✓   |   ✓    |        |
+| Administer all projects and environments (no secrets, no deploy) |   ✓   |   ✓   |        |        |
 
-- **Workspace roles never grant project, environment or secret permissions.** A unit test
-  and an integration test assert this. Secret access will come from project roles,
-  environment roles and access policies (Phase 2); those roles already exist in the
-  catalog.
-- Member and Viewer currently have the same permissions. They will differ once project
-  access defaults exist (Phase 2).
+- **Workspace roles never grant secret, deployment or change-request permissions.** Owner
+  and Admin administer project and environment metadata; Members can create projects
+  (and become their Project Admin); Viewers see only projects they are added to. Secret
+  access comes only from project roles and environment grants. See
+  [authorization.md](authorization.md).
 - Rules on top of permissions, enforced in the API with the database as a backstop:
   - Nobody changes their own role or removes themselves. Use "transfer ownership" or
     "leave" instead.
@@ -153,4 +154,4 @@ workspace or accepts an invitation. It is a preference, never authorization evid
 - Outbound email (see above).
 - Custom roles (`role:manage` is reserved).
 - An audit log viewer.
-- Project, environment and secret management (Phase 2).
+- Secret management (Phase 3).

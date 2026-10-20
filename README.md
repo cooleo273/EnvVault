@@ -4,18 +4,22 @@ A centralized environment variable and secrets management platform for developer
 teams and enterprises: workspaces, projects, unlimited custom environments, and
 encrypted, versioned, audited secrets.
 
-> **Status: Phase 1 (authentication and workspace management).** Sign-up, sign-in, email
-> verification, password recovery, profile, password change and session management run on
-> **Neon Auth**. Workspaces, onboarding, members, invitations, archive/restore, ownership
-> transfer and default-deny RBAC are implemented in the API. Projects and secret storage
-> are not implemented yet (Phase 2). **Do not store real secrets in EnvVault yet.**
+> **Status: Phase 2 (projects and environments).** Authentication runs on **Neon Auth**.
+> Workspaces, members, invitations and ownership transfer (Phase 1) are joined by
+> projects, unlimited custom environments, environment templates, project roles,
+> per-environment ALLOW/DENY access grants and protected environments. Secret storage is
+> not implemented yet (Phase 3). **Do not store real secrets in EnvVault yet.**
 
 See [docs/architecture.md](docs/architecture.md) for the architecture, trust
 boundaries and encryption design, and [docs/database.md](docs/database.md) for the
 data model, ERD, tenancy boundaries and authorization flow.
 [docs/authentication.md](docs/authentication.md) covers Neon Auth, token verification,
 revocation, step-up and the required configuration.
-[docs/workspaces.md](docs/workspaces.md) covers roles, endpoints, invitations and onboarding. UI conventions are in
+[docs/workspaces.md](docs/workspaces.md) covers roles, endpoints, invitations and onboarding.
+[docs/projects.md](docs/projects.md), [docs/environments.md](docs/environments.md) and
+[docs/authorization.md](docs/authorization.md) cover projects, environments and the
+workspace → project → environment permission model. The API's OpenAPI document is served
+at `GET /api/v1/openapi.json`. UI conventions are in
 [docs/design-system.md](docs/design-system.md); open `/design-system` in the running
 app for the component reference.
 
