@@ -95,7 +95,7 @@ jobs:
         run: pnpm db:migrate:deploy
 
       - name: Align built-in roles (twice, to verify idempotency)
-        run: pnpm --filter @envvault/database build && pnpm db:sync-catalog && pnpm db:sync-catalog
+        run: pnpm turbo run build --filter=@envvault/database && pnpm db:sync-catalog && pnpm db:sync-catalog
 
       - name: Check schema drift (migrations vs schema)
         run: pnpm db:check-drift

@@ -21,7 +21,8 @@ async function createWorkspace(page: Page, name: string): Promise<string> {
   await page.getByText('Team', { exact: true }).click();
   await page.getByLabel('Workspace name').fill(name);
   await page.getByRole('button', { name: 'Create workspace' }).click();
-  await expect(page).toHaveURL(/\/workspaces\/[0-9a-f-]{36}\?created=1$/);
+  // Generous: `next dev` may compile the workspace route on first use.
+  await expect(page).toHaveURL(/\/workspaces\/[0-9a-f-]{36}\?created=1$/, { timeout: 30_000 });
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
   return /\/workspaces\/([0-9a-f-]{36})/.exec(page.url())?.[1] ?? '';
 }

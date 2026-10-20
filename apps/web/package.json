@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@envvault/config": "workspace:*",
+    "@envvault/database": "workspace:*",
     "@playwright/test": "1.64.0",
     "@tailwindcss/postcss": "4.3.3",
     "@testing-library/dom": "10.4.2",

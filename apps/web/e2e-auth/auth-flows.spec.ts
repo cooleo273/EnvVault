@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createPrismaClient } from '../../../packages/database/dist/index.js';
+import { createPrismaClient } from '@envvault/database';
 import {
   completeOnboarding,
   latestMail,

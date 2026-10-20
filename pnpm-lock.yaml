@@ -176,6 +176,9 @@ importers:
       '@envvault/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@envvault/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@playwright/test':
         specifier: 1.64.0
         version: 1.64.0

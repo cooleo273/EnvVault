@@ -47,6 +47,22 @@ test.describe('app shell', () => {
     await expect(page.getByRole('button', { name: 'New project' })).toBeDisabled();
   });
 
+  test('Team Members shows the active workspace members on its own page', async ({ page }) => {
+    await page.goto('/dashboard');
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    await nav.getByRole('link', { name: /Team Members/ }).click();
+    await expect(page).toHaveURL(/\/members$/);
+    await expect(nav.getByRole('link', { name: /Team Members/ })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(page.getByRole('heading', { level: 1, name: 'Team Members' })).toBeVisible();
+    await expect(
+      page.getByRole('main').getByText('Shared Workspace', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('table', { name: 'Workspace members' })).toContainText('Owner');
+  });
+
   test('marks the current page in the sidebar and navigates by keyboard', async ({ page }) => {
     await page.goto('/dashboard');
     const nav = page.getByRole('navigation', { name: 'Main' });
