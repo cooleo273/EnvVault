@@ -1,6 +1,6 @@
 # EnvVault Architecture
 
-> Status: **Phase 2 — Projects, custom environments and hierarchical authorization.** This document describes the architecture as
+> Status: **Phase 3A — Self-managed encryption and key management** (on top of Phase 2 projects, environments and hierarchical authorization). This document describes the architecture as
 > implemented today and the boundaries that later phases build on. Sections marked
 > _Planned_ describe intended designs that are not implemented yet.
 
@@ -263,44 +263,29 @@ flow, constraint catalogue and deletion policy.
 
 ## 7. Encryption architecture
 
-Implemented in Phase 0.1: the boundary and the cipher (`packages/crypto`). Not
-implemented: any KMS provider or secret storage.
+Implemented in Phase 3A (`packages/crypto`, `apps/api/src/encryption`): envelope
+encryption with AES-256-GCM from `node:crypto`. Each secret version gets a fresh data
+key, and a key encryption key held by a `KeyManagementProvider` wraps it. Secret CRUD
+follows in Phase 3B.
 
 ```
-                  ┌────────────── Managed KMS ──────────────┐
-                  │  root key (never leaves the KMS)        │
-                  └───────▲──────────────────────┬──────────┘
-          GenerateDataKey │                      │ plaintext DEK + wrapped DEK
-          (context)       │                      ▼
- plaintext ──► EnvelopeCipher.encrypt ──► AES-256-GCM(DEK, iv, AAD=context)
-                                           │
-                                           ▼
-            EncryptedEnvelope { version, algorithm, kmsProvider, keyId,
-                                encryptedDataKey, iv, authTag, ciphertext }
-                                           │
-                                           ▼
-                                     PostgreSQL
+ plaintext ──► SecretCipher.encryptSecret(value, {workspace, project, environment, secret, version})
+                 │  fresh DEK ── AES-256-GCM(value, AAD = domain ‖ format ‖ context)
+                 │  provider.generateDataKey ── AES-256-GCM(DEK, AAD = domain ‖ key ref ‖ context)
+                 ▼
+   SecretEnvelope { formatVersion, algorithm, providerId, keyId, keyVersion,
+                    wrappedKey, nonce, ciphertext, tag } ──► secret_versions
 ```
 
-- **Envelope encryption:** each value gets a fresh 256-bit data key (DEK) from the KMS.
-  Only the KMS-wrapped DEK is persisted next to the ciphertext. Plaintext DEKs are zeroed
-  immediately after use.
-- **Algorithm:** AES-256-GCM via `node:crypto` (OpenSSL), with a 96-bit random IV and a
-  128-bit authentication tag. No custom primitives.
-- **Encryption context:** identifiers such as `{ workspaceId, projectId, environment }`
-  are bound as AES-GCM AAD _and_ passed to the KMS. A ciphertext copied to another
-  tenant or environment fails to decrypt. The context is canonicalised (key-sorted) and
-  must never contain secret material.
-- **Versioned envelopes** (`version`, `algorithm`, `kmsProvider`, `keyId`) allow
-  algorithm migration and root-key rotation. Rotation re-wraps DEKs without re-encrypting
-  the values.
-- **`KeyManagementProvider`** is the only seam to the KMS. Concrete providers (AWS KMS,
-  Google Cloud KMS, Azure Key Vault, HashiCorp Vault Transit) are **not shipped**. The
-  package intentionally contains no "local" or in-memory provider that could be mistaken
-  for a production key store; the in-memory KMS exists only inside the unit tests.
-- **Root keys are never stored in the database or in application configuration.** The
-  API is only configured with a KMS key _identifier_ and credentials to call the KMS,
-  ideally ambient workload identity rather than static keys.
+- Only the local, self-managed provider exists. It is for development and testing and is
+  refused in production. A managed KMS provider is required before production use.
+- Keys never touch the database or Git. They are created only by `pnpm crypto:init:dev`
+  and rotated with `pnpm crypto:rotate:dev`. Re-wrapping changes only the wrapped key.
+- `EncryptionModule` has no HTTP routes. The keyring is validated before the app is
+  created, and a broken keyring stops start-up with a dedicated error.
+
+Details: [encryption.md](encryption.md), [key-management.md](key-management.md),
+[threat-model.md](threat-model.md).
 
 ## 8. Authentication and authorization
 
@@ -396,7 +381,8 @@ developer's real database.
 - See [authentication.md §9](authentication.md#9-limitations-and-open-items) for
   authentication-specific limitations (beta SDK; password reset does not revoke tokens
   that were already issued).
-- No KMS provider implementation; secrets cannot be stored until one is configured.
+- Only the self-managed local key provider exists (development and test); production
+  requires a managed KMS provider. Secret CRUD is not implemented yet (Phase 3B).
 - Rate limiting is per instance (in-memory).
 - Redis is provisioned locally but not used by the API yet.
 - No production deployment manifests yet (`infrastructure/deployment`).

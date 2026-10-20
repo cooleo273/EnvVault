@@ -6,15 +6,21 @@ import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
 import { EnvValidationError } from './config/env.js';
 import { loadEnv } from './config/load-env.js';
+import { EncryptionConfigurationError, loadEncryption } from './encryption/encryption.config.js';
 
 async function bootstrap(): Promise<void> {
   const env = loadEnv();
+  // Keys are validated before anything else starts; a broken keyring stops start-up.
+  const encryption = await loadEncryption(env);
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule.register(env), {
-    bufferLogs: true,
-    // Body parsing is configured explicitly (with size limits) in configureApp.
-    bodyParser: false,
-  });
+  const app = await NestFactory.create<NestExpressApplication>(
+    AppModule.register(env, { encryption }),
+    {
+      bufferLogs: true,
+      // Body parsing is configured explicitly (with size limits) in configureApp.
+      bodyParser: false,
+    },
+  );
   app.useLogger(app.get(Logger));
   configureApp(app, env);
 
@@ -25,7 +31,7 @@ async function bootstrap(): Promise<void> {
 try {
   await bootstrap();
 } catch (error) {
-  if (error instanceof EnvValidationError) {
+  if (error instanceof EnvValidationError || error instanceof EncryptionConfigurationError) {
     // The logger is not available before configuration is valid.
     process.stderr.write(`${error.message}\n`);
   } else {

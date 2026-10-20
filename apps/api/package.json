@@ -19,6 +19,7 @@
     "test:integration": "vitest run --config vitest.config.integration.ts"
   },
   "dependencies": {
+    "@envvault/crypto": "workspace:*",
     "@envvault/database": "workspace:*",
     "@envvault/shared": "workspace:*",
     "@nestjs/common": "12.1.3",

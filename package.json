@@ -33,7 +33,10 @@
     "db:check-drift": "pnpm --filter @envvault/database db:check-drift",
     "db:seed": "turbo run build --filter=@envvault/database && pnpm --filter @envvault/database db:seed",
     "test:e2e:auth": "turbo run test:e2e:auth",
-    "db:sync-catalog": "pnpm --filter @envvault/database db:sync-catalog"
+    "db:sync-catalog": "pnpm --filter @envvault/database db:sync-catalog",
+    "crypto:init:dev": "turbo run build --filter=@envvault/crypto --output-logs=errors-only && node packages/crypto/dist/cli/dev-keys.js init",
+    "crypto:rotate:dev": "turbo run build --filter=@envvault/crypto --output-logs=errors-only && node packages/crypto/dist/cli/dev-keys.js rotate",
+    "crypto:status:dev": "turbo run build --filter=@envvault/crypto --output-logs=errors-only && node packages/crypto/dist/cli/dev-keys.js status"
   },
   "devDependencies": {
     "@envvault/config": "workspace:*",
