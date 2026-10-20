@@ -59,7 +59,8 @@ function MobileNav() {
 }
 
 export interface AppHeaderProps extends UserMenuProps {
-  workspaces: readonly WorkspaceOption[];
+  /** Undefined when the list could not be loaded. */
+  workspaces?: readonly WorkspaceOption[] | undefined;
   /** The remembered workspace (already authorized by the API). */
   activeWorkspaceId?: string | undefined;
   pendingInvitationCount?: number;
@@ -83,7 +84,8 @@ export function AppHeader({
     <header className="sticky top-0 z-40 flex h-header shrink-0 items-center gap-2 border-b bg-background px-3 sm:px-4">
       <MobileNav />
       <WorkspaceSwitcher
-        workspaces={workspaces}
+        workspaces={workspaces ?? []}
+        unavailable={workspaces === undefined}
         {...(currentWorkspaceId ? { currentWorkspaceId } : {})}
         onSelect={(id) => {
           if (!selectWorkspaceAction) return;

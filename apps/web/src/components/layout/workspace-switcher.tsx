@@ -22,15 +22,20 @@ export interface WorkspaceSwitcherProps {
   workspaces?: readonly WorkspaceOption[];
   currentWorkspaceId?: string;
   onSelect?: (workspaceId: string) => void;
+  /** The list could not be loaded (e.g. the API timed out). */
+  unavailable?: boolean;
 }
 
 export function WorkspaceSwitcher({
   workspaces = [],
   currentWorkspaceId,
   onSelect,
+  unavailable = false,
 }: WorkspaceSwitcherProps) {
   const current = workspaces.find((workspace) => workspace.id === currentWorkspaceId);
-  const label = current?.name ?? 'No workspace';
+  let label = current?.name ?? 'No workspace';
+  // Never claim "No workspace" while inside one or when the list failed to load.
+  if (!current && (unavailable || currentWorkspaceId)) label = 'Workspaces';
 
   return (
     <DropdownMenu>
@@ -50,7 +55,11 @@ export function WorkspaceSwitcher({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
         <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
-        {workspaces.length === 0 ? (
+        {unavailable ? (
+          <p className="px-2 pb-2 text-xs text-muted-foreground">
+            Your workspaces could not be loaded. Refresh the page to try again.
+          </p>
+        ) : workspaces.length === 0 ? (
           <p className="px-2 pb-2 text-xs text-muted-foreground">
             You don’t belong to any workspace yet.
           </p>

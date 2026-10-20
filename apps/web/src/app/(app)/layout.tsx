@@ -17,7 +17,8 @@ export default async function AppLayout({ children }: Readonly<{ children: React
   return (
     <AppShell
       user={{ name: me?.user.displayName ?? user.name, email: user.email }}
-      workspaces={(me?.workspaces ?? []).map((w) => ({ id: w.id, name: w.name }))}
+      // undefined = could not be loaded (shown as such, not as "no workspace").
+      workspaces={me?.workspaces.map((w) => ({ id: w.id, name: w.name }))}
       activeWorkspaceId={me?.activeWorkspaceId ?? undefined}
       pendingInvitationCount={me?.pendingInvitationCount ?? 0}
       signOutAction={signOutAction}

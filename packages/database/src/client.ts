@@ -10,6 +10,13 @@ export interface CreatePrismaClientOptions {
   applicationName?: string;
   /** How long to wait for a new connection before failing. */
   connectionTimeoutMs?: number;
+  /**
+   * How long an unused pooled connection stays open. A new connection to a
+   * remote database (e.g. Neon over TLS) costs several round trips (~1 s),
+   * so idle connections are kept for 5 minutes by default instead of
+   * node-postgres's 10 seconds.
+   */
+  idleTimeoutMs?: number;
 }
 
 /**
@@ -24,6 +31,8 @@ export function createPrismaClient(options: CreatePrismaClientOptions): PrismaCl
     connectionString: options.connectionString,
     application_name: options.applicationName ?? 'envvault',
     connectionTimeoutMillis: options.connectionTimeoutMs ?? 5_000,
+    idleTimeoutMillis: options.idleTimeoutMs ?? 300_000,
+    keepAlive: true,
     ...(options.maxConnections === undefined ? {} : { max: options.maxConnections }),
   });
   // Prisma's own console logging is disabled: it bypasses the application's

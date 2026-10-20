@@ -28,13 +28,16 @@ export class UsersController {
   @AllowUnverifiedEmail()
   async me(@CurrentPrincipal() principal: Principal): Promise<MeResponse> {
     const repos = createRepositories(this.database.client);
-    const account = await repos.users.getAccount(principal.userId);
+    // Independent reads run in parallel: each is a network round trip.
+    const [account, workspaces, pendingInvitationCount] = await Promise.all([
+      repos.users.getAccount(principal.userId),
+      repos.workspaces.listForUser(principal.userId),
+      principal.emailVerified
+        ? repos.invitations.countUsableForEmail(principal.email.toLowerCase())
+        : Promise.resolve(0),
+    ]);
     if (!account) throw new ApiException(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'Not found');
-    const workspaces = await repos.workspaces.listForUser(principal.userId);
     const remembered = workspaces.find((w) => w.id === account.lastWorkspaceId);
-    const pendingInvitationCount = principal.emailVerified
-      ? await repos.invitations.countUsableForEmail(principal.email.toLowerCase())
-      : 0;
     return {
       user: {
         id: account.id,

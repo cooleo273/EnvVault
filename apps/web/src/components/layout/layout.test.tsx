@@ -83,6 +83,18 @@ describe('WorkspaceSwitcher', () => {
     );
   });
 
+  it('never claims "No workspace" when the list failed to load or while inside one', async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<WorkspaceSwitcher unavailable currentWorkspaceId="w1" />);
+    await user.click(screen.getByRole('button', { name: /current: Workspaces/ }));
+    expect(await screen.findByText(/could not be loaded/)).toBeInTheDocument();
+    expect(screen.queryByText(/don’t belong to any workspace/)).not.toBeInTheDocument();
+    unmount();
+
+    render(<WorkspaceSwitcher workspaces={[]} currentWorkspaceId="w-archived" />);
+    expect(screen.getByRole('button', { name: /current: Workspaces/ })).toBeInTheDocument();
+  });
+
   it('lists provided workspaces and reports selection', async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
