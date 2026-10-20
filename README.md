@@ -4,11 +4,12 @@ A centralized environment variable and secrets management platform for developer
 teams and enterprises: workspaces, projects, unlimited custom environments, and
 encrypted, versioned, audited secrets.
 
-> **Status: Phase 2 (projects and environments).** Authentication runs on **Neon Auth**.
-> Workspaces, members, invitations and ownership transfer (Phase 1) are joined by
-> projects, unlimited custom environments, environment templates, project roles,
-> per-environment ALLOW/DENY access grants and protected environments. Secret storage is
-> not implemented yet (Phase 3). **Do not store real secrets in EnvVault yet.**
+> **Status: Phase 3A (encryption and key management).** Authentication runs on **Neon
+> Auth**. Workspaces, members and invitations (Phase 1), and projects, custom environments
+> and per-environment access (Phase 2), are implemented. Phase 3A adds envelope encryption
+> (AES-256-GCM, one data key per secret version) with a **self-managed development key
+> provider**. Secret CRUD is not implemented yet (Phase 3B). **Do not store real secrets
+> in EnvVault yet**, and never use the development key provider in production.
 
 See [docs/architecture.md](docs/architecture.md) for the architecture, trust
 boundaries and encryption design, and [docs/database.md](docs/database.md) for the
@@ -18,7 +19,10 @@ revocation, step-up and the required configuration.
 [docs/workspaces.md](docs/workspaces.md) covers roles, endpoints, invitations and onboarding.
 [docs/projects.md](docs/projects.md), [docs/environments.md](docs/environments.md) and
 [docs/authorization.md](docs/authorization.md) cover projects, environments and the
-workspace → project → environment permission model. The API's OpenAPI document is served
+workspace → project → environment permission model.
+[docs/encryption.md](docs/encryption.md), [docs/key-management.md](docs/key-management.md)
+and [docs/threat-model.md](docs/threat-model.md) cover envelope encryption, local key
+setup and rotation, and the security limitations of self-managed keys. The API's OpenAPI document is served
 at `GET /api/v1/openapi.json`. UI conventions are in
 [docs/design-system.md](docs/design-system.md); open `/design-system` in the running
 app for the component reference.
@@ -120,6 +124,8 @@ Run from the repository root:
 | `pnpm db:check-drift`                                      | Fail if the database differs from the Prisma schema                        |
 | `pnpm db:seed`                                             | Load safe development data (refuses `NODE_ENV=production`)                 |
 | `pnpm infra:up` / `infra:down` / `infra:logs` / `infra:ps` | Manage local Docker services                                               |
+| `pnpm crypto:init:dev`                                     | Create the development encryption keyring (once; refuses to overwrite)     |
+| `pnpm crypto:rotate:dev` / `crypto:status:dev`             | Add a new active key version / list key versions (never prints keys)       |
 
 ### Database
 

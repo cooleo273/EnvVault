@@ -23,6 +23,8 @@ secrets/
 .secrets/
 .envrc
 .npmrc.local
+# Development key material (pnpm crypto:init:dev)
+.envvault/
 
 # Dependencies
 node_modules/

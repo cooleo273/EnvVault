@@ -10,14 +10,30 @@ import { isNotSensitiveRoute } from './common/sensitive-rate-limit.js';
 import { APP_ENV, AppConfigModule } from './config/config.module.js';
 import type { Env } from './config/env.js';
 import { DatabaseModule } from './database/database.module.js';
+import {
+  DISABLED_ENCRYPTION,
+  EncryptionConfigurationError,
+  type EncryptionRuntime,
+} from './encryption/encryption.config.js';
+import { EncryptionModule } from './encryption/encryption.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { WorkspacesModule } from './workspaces/workspaces.module.js';
 
+export interface AppModuleOptions {
+  /** Loaded by loadEncryption() before the app starts. Default: disabled. */
+  encryption?: EncryptionRuntime;
+}
+
 @Module({})
 export class AppModule {
   /** The validated environment is passed in explicitly so tests can supply their own. */
-  static register(env: Env): DynamicModule {
+  static register(env: Env, options: AppModuleOptions = {}): DynamicModule {
+    const encryption = options.encryption ?? DISABLED_ENCRYPTION;
+    if (env.ENCRYPTION_PROVIDER !== 'none' && encryption.status !== 'ready') {
+      // Never start silently without the keys the configuration asks for.
+      throw new EncryptionConfigurationError('the configured key provider was not loaded');
+    }
     return {
       module: AppModule,
       imports: [
@@ -44,6 +60,7 @@ export class AppModule {
           }),
         }),
         DatabaseModule,
+        EncryptionModule.register(encryption),
         HealthModule,
         AuthModule,
         WorkspacesModule,

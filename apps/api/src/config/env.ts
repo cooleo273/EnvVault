@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
@@ -83,6 +84,18 @@ export const envSchema = z
      * emailed and the API says so (`delivery.status = not_configured`).
      */
     EMAIL_PROVIDER: z.enum(['none']).default('none'),
+
+    /*
+     * Envelope encryption (see docs/key-management.md). `none` disables secret
+     * encryption: nothing can be encrypted and no key is ever generated
+     * implicitly. `local` is the self-managed development keyring and is
+     * refused in production.
+     */
+    ENCRYPTION_PROVIDER: z.enum(['none', 'local']).default('none'),
+    /** Absolute path of the keyring created by `pnpm crypto:init:dev`. */
+    ENCRYPTION_KEYRING_FILE: z.string().min(1).optional(),
+    /** Alternative to the file: base64 of the keyring JSON (server-side secret). */
+    ENCRYPTION_LOCAL_KEYRING: z.string().min(1).optional(),
   })
   .superRefine((env, ctx) => {
     // Keys must come from the same Neon Auth branch as the issuer: mixing a
@@ -96,6 +109,40 @@ export const envSchema = z
         path: ['NEON_AUTH_JWKS_URL'],
         message: 'must have the same origin as NEON_AUTH_BASE_URL (same Neon Auth branch)',
       });
+    }
+    const keyringSources = [env.ENCRYPTION_KEYRING_FILE, env.ENCRYPTION_LOCAL_KEYRING].filter(
+      (value) => value !== undefined,
+    ).length;
+    if (env.ENCRYPTION_PROVIDER === 'none' && keyringSources > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['ENCRYPTION_PROVIDER'],
+        message: 'must be "local" when a keyring is configured (keys are never ignored silently)',
+      });
+    }
+    if (env.ENCRYPTION_PROVIDER === 'local') {
+      if (keyringSources !== 1) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['ENCRYPTION_KEYRING_FILE'],
+          message: 'set exactly one of ENCRYPTION_KEYRING_FILE or ENCRYPTION_LOCAL_KEYRING',
+        });
+      }
+      if (env.ENCRYPTION_KEYRING_FILE !== undefined && !isAbsolute(env.ENCRYPTION_KEYRING_FILE)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['ENCRYPTION_KEYRING_FILE'],
+          message: 'must be an absolute path',
+        });
+      }
+      if (env.NODE_ENV === 'production') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['ENCRYPTION_PROVIDER'],
+          message:
+            'the local key provider is restricted to development and test; production needs a reviewed managed KMS provider',
+        });
+      }
     }
     if (env.NODE_ENV !== 'production') {
       return;

@@ -2,12 +2,13 @@
   "name": "@envvault/crypto",
   "version": "0.0.0",
   "private": true,
-  "description": "Envelope encryption boundary (KMS provider interface + AES-256-GCM envelope cipher). Server-side only.",
+  "description": "Envelope encryption and key management (AES-256-GCM, key provider interface, local development keyring). Server-side only.",
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "browser": "./dist/browser.js",
       "default": "./dist/index.js"
     }
   },

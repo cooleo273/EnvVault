@@ -46,7 +46,8 @@
         "NEXT_PUBLIC_*",
         "NEON_AUTH_*",
         "AUTH_*",
-        "APP_BASE_URL"
+        "APP_BASE_URL",
+        "ENCRYPTION_*"
       ]
     },
     "clean": {
