@@ -1,4 +1,38 @@
 import {
+  type ActivityPage,
+  activityPageSchema,
+  type ActivityQuery,
+  type AddProjectMemberInput,
+  type CreateEnvironmentGrantInput,
+  type CreateEnvironmentInput,
+  type CreateEnvironmentTemplateInput,
+  type CreateProjectInput,
+  type DuplicateEnvironmentInput,
+  type DuplicateProjectInput,
+  type EnvironmentAccess,
+  environmentAccessSchema,
+  type EnvironmentDetail,
+  environmentDetailSchema,
+  type EnvironmentSummary,
+  environmentSummarySchema,
+  type EnvironmentTemplate,
+  environmentTemplateSchema,
+  type ListEnvironmentsQuery,
+  type ListProjectsQuery,
+  type Paginated,
+  paginatedSchema,
+  type ProjectAccessList,
+  projectAccessListSchema,
+  type ProjectDetail,
+  projectDetailSchema,
+  type ProjectRoleKey,
+  type ProjectSummary,
+  projectSummarySchema,
+  type ScopedRole,
+  scopedRoleSchema,
+  type UpdateEnvironmentInput,
+  type UpdateEnvironmentProtectionInput,
+  type UpdateProjectInput,
   type AcceptedInvitation,
   acceptedInvitationSchema,
   API_BASE_PATH,
@@ -264,6 +298,347 @@ export class EnvVaultClient {
         }));
   }
 
+  /* ---------------------------------------------------------- Projects */
+
+  listProjects(
+    workspaceId: string,
+    query: ListProjectsQuery = {},
+  ): Promise<Paginated<ProjectSummary>> {
+    return this.request(`${workspacePath(workspaceId)}/projects${toQuery(query)}`, {
+      schema: paginatedSchema(projectSummarySchema),
+    });
+  }
+
+  createProject(
+    workspaceId: string,
+    input: CreateProjectInput,
+  ): Promise<{ id: string; slug: string }> {
+    return this.request(`${workspacePath(workspaceId)}/projects`, {
+      method: 'POST',
+      body: input,
+      schema: createdSchema,
+    });
+  }
+
+  getProject(workspaceId: string, projectId: string): Promise<ProjectDetail> {
+    return this.request(projectPath(workspaceId, projectId), { schema: projectDetailSchema });
+  }
+
+  async updateProject(
+    workspaceId: string,
+    projectId: string,
+    input: UpdateProjectInput,
+  ): Promise<void> {
+    await this.request(projectPath(workspaceId, projectId), {
+      method: 'PATCH',
+      body: input,
+      schema: noContentSchema,
+    });
+  }
+
+  async archiveProject(workspaceId: string, projectId: string): Promise<void> {
+    await this.request(`${projectPath(workspaceId, projectId)}/archive`, {
+      method: 'POST',
+      schema: noContentSchema,
+    });
+  }
+
+  async restoreProject(workspaceId: string, projectId: string): Promise<void> {
+    await this.request(`${projectPath(workspaceId, projectId)}/restore`, {
+      method: 'POST',
+      schema: noContentSchema,
+    });
+  }
+
+  /** Sensitive: requires a recent step-up. */
+  async deleteProject(workspaceId: string, projectId: string): Promise<void> {
+    await this.request(projectPath(workspaceId, projectId), {
+      method: 'DELETE',
+      schema: noContentSchema,
+    });
+  }
+
+  duplicateProject(
+    workspaceId: string,
+    projectId: string,
+    input: DuplicateProjectInput,
+  ): Promise<{ id: string; slug: string }> {
+    return this.request(`${projectPath(workspaceId, projectId)}/duplicate`, {
+      method: 'POST',
+      body: input,
+      schema: createdSchema,
+    });
+  }
+
+  async setProjectFavorite(
+    workspaceId: string,
+    projectId: string,
+    favorite: boolean,
+  ): Promise<void> {
+    await this.request(`${projectPath(workspaceId, projectId)}/favorite`, {
+      method: favorite ? 'PUT' : 'DELETE',
+      schema: noContentSchema,
+    });
+  }
+
+  async recordProjectVisit(workspaceId: string, projectId: string): Promise<void> {
+    await this.request(`${projectPath(workspaceId, projectId)}/visits`, {
+      method: 'POST',
+      schema: noContentSchema,
+    });
+  }
+
+  projectActivity(
+    workspaceId: string,
+    projectId: string,
+    query: ActivityQuery = {},
+  ): Promise<ActivityPage> {
+    return this.request(`${projectPath(workspaceId, projectId)}/activity${toQuery(query)}`, {
+      schema: activityPageSchema,
+    });
+  }
+
+  projectMembers(workspaceId: string, projectId: string): Promise<ProjectAccessList> {
+    return this.request(`${projectPath(workspaceId, projectId)}/members`, {
+      schema: projectAccessListSchema,
+    });
+  }
+
+  projectRoles(
+    workspaceId: string,
+    projectId: string,
+  ): Promise<{ projectRoles: ScopedRole[]; environmentRoles: ScopedRole[] }> {
+    return this.request(`${projectPath(workspaceId, projectId)}/roles`, {
+      schema: z.object({
+        projectRoles: z.array(scopedRoleSchema),
+        environmentRoles: z.array(scopedRoleSchema),
+      }),
+    });
+  }
+
+  addProjectMember(
+    workspaceId: string,
+    projectId: string,
+    input: AddProjectMemberInput,
+  ): Promise<{ id: string }> {
+    return this.request(`${projectPath(workspaceId, projectId)}/members`, {
+      method: 'POST',
+      body: input,
+      schema: z.object({ id: z.uuid() }),
+    });
+  }
+
+  async changeProjectMemberRole(
+    workspaceId: string,
+    projectId: string,
+    memberId: string,
+    roleKey: ProjectRoleKey,
+  ): Promise<void> {
+    await this.request(
+      `${projectPath(workspaceId, projectId)}/members/${encodeURIComponent(memberId)}`,
+      {
+        method: 'PATCH',
+        body: { roleKey },
+        schema: noContentSchema,
+      },
+    );
+  }
+
+  async removeProjectMember(
+    workspaceId: string,
+    projectId: string,
+    memberId: string,
+  ): Promise<void> {
+    await this.request(
+      `${projectPath(workspaceId, projectId)}/members/${encodeURIComponent(memberId)}`,
+      {
+        method: 'DELETE',
+        schema: noContentSchema,
+      },
+    );
+  }
+
+  /* ------------------------------------------------------- Environments */
+
+  listEnvironments(
+    workspaceId: string,
+    projectId: string,
+    query: ListEnvironmentsQuery = {},
+  ): Promise<Paginated<EnvironmentSummary>> {
+    return this.request(`${projectPath(workspaceId, projectId)}/environments${toQuery(query)}`, {
+      schema: paginatedSchema(environmentSummarySchema),
+    });
+  }
+
+  createEnvironment(
+    workspaceId: string,
+    projectId: string,
+    input: CreateEnvironmentInput,
+  ): Promise<{ id: string; slug: string }> {
+    return this.request(`${projectPath(workspaceId, projectId)}/environments`, {
+      method: 'POST',
+      body: input,
+      schema: createdSchema,
+    });
+  }
+
+  async reorderEnvironments(
+    workspaceId: string,
+    projectId: string,
+    environmentIds: string[],
+  ): Promise<void> {
+    await this.request(`${projectPath(workspaceId, projectId)}/environments/order`, {
+      method: 'PUT',
+      body: { environmentIds },
+      schema: noContentSchema,
+    });
+  }
+
+  getEnvironment(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+  ): Promise<EnvironmentDetail> {
+    return this.request(environmentPath(workspaceId, projectId, environmentId), {
+      schema: environmentDetailSchema,
+    });
+  }
+
+  async updateEnvironment(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: UpdateEnvironmentInput,
+  ): Promise<void> {
+    await this.request(environmentPath(workspaceId, projectId, environmentId), {
+      method: 'PATCH',
+      body: input,
+      schema: noContentSchema,
+    });
+  }
+
+  /** Removing protection requires a recent step-up. */
+  async setEnvironmentProtection(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: UpdateEnvironmentProtectionInput,
+  ): Promise<void> {
+    await this.request(`${environmentPath(workspaceId, projectId, environmentId)}/protection`, {
+      method: 'PUT',
+      body: input,
+      schema: noContentSchema,
+    });
+  }
+
+  async archiveEnvironment(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+  ): Promise<void> {
+    await this.request(`${environmentPath(workspaceId, projectId, environmentId)}/archive`, {
+      method: 'POST',
+      schema: noContentSchema,
+    });
+  }
+
+  async restoreEnvironment(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+  ): Promise<void> {
+    await this.request(`${environmentPath(workspaceId, projectId, environmentId)}/restore`, {
+      method: 'POST',
+      schema: noContentSchema,
+    });
+  }
+
+  /** Protected environments require a recent step-up. */
+  async deleteEnvironment(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+  ): Promise<void> {
+    await this.request(environmentPath(workspaceId, projectId, environmentId), {
+      method: 'DELETE',
+      schema: noContentSchema,
+    });
+  }
+
+  duplicateEnvironment(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: DuplicateEnvironmentInput,
+  ): Promise<{ id: string; slug: string }> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/duplicate`, {
+      method: 'POST',
+      body: input,
+      schema: createdSchema,
+    });
+  }
+
+  environmentAccess(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+  ): Promise<EnvironmentAccess> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/access`, {
+      schema: environmentAccessSchema,
+    });
+  }
+
+  grantEnvironmentAccess(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: CreateEnvironmentGrantInput,
+  ): Promise<{ id: string }> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/access`, {
+      method: 'POST',
+      body: input,
+      schema: z.object({ id: z.uuid() }),
+    });
+  }
+
+  async revokeEnvironmentAccess(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    grantId: string,
+  ): Promise<void> {
+    await this.request(
+      `${environmentPath(workspaceId, projectId, environmentId)}/access/${encodeURIComponent(grantId)}`,
+      { method: 'DELETE', schema: noContentSchema },
+    );
+  }
+
+  /* ---------------------------------------------------------- Templates */
+
+  environmentTemplates(workspaceId: string): Promise<EnvironmentTemplate[]> {
+    return this.request(`${workspacePath(workspaceId)}/environment-templates`, {
+      schema: z.array(environmentTemplateSchema),
+    });
+  }
+
+  createEnvironmentTemplate(
+    workspaceId: string,
+    input: CreateEnvironmentTemplateInput,
+  ): Promise<EnvironmentTemplate> {
+    return this.request(`${workspacePath(workspaceId)}/environment-templates`, {
+      method: 'POST',
+      body: input,
+      schema: environmentTemplateSchema,
+    });
+  }
+
+  async deleteEnvironmentTemplate(workspaceId: string, templateId: string): Promise<void> {
+    await this.request(
+      `${workspacePath(workspaceId)}/environment-templates/${encodeURIComponent(templateId)}`,
+      { method: 'DELETE', schema: noContentSchema },
+    );
+  }
+
   /** After a Neon Auth password change or session revocation: invalidate issued API tokens. */
   async revokeTokens(reason: 'password_changed' | 'sessions_revoked'): Promise<void> {
     await this.request('/auth/tokens/revoke', {
@@ -333,6 +708,32 @@ export class EnvVaultClient {
 
 /** An invitation by link token, or by id when it is addressed to the signed-in user. */
 export type InvitationRef = { token: string } | { id: string };
+
+const createdSchema = z.object({ id: z.uuid(), slug: z.string() });
+
+/** Query string from defined, non-empty values. */
+function toQuery(params: Record<string, unknown>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (
+      typeof value === 'string'
+        ? value !== ''
+        : typeof value === 'number' || typeof value === 'boolean'
+    ) {
+      search.set(key, String(value));
+    }
+  }
+  const text = search.toString();
+  return text ? `?${text}` : '';
+}
+
+function projectPath(workspaceId: string, projectId: string): string {
+  return `${workspacePath(workspaceId)}/projects/${encodeURIComponent(projectId)}`;
+}
+
+function environmentPath(workspaceId: string, projectId: string, environmentId: string): string {
+  return `${projectPath(workspaceId, projectId)}/environments/${encodeURIComponent(environmentId)}`;
+}
 
 function workspacePath(workspaceId: string): string {
   return `/workspaces/${encodeURIComponent(workspaceId)}`;

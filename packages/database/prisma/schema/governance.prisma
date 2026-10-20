@@ -106,6 +106,8 @@ model AuditEvent {
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: NoAction)
 
   @@index([workspaceId, occurredAt(sort: Desc)])
+  @@index([projectId, occurredAt(sort: Desc)])
+  @@index([environmentId, occurredAt(sort: Desc)])
   @@index([workspaceId, resourceType, resourceId])
   @@index([actorUserId, occurredAt])
   @@index([actorServiceIdentityId, occurredAt])

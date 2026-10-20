@@ -55,6 +55,8 @@ export function WorkspaceTypePicker({
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="mb-1.5 text-sm font-medium">Workspace type</legend>
+      {/* Submitted from state: React's post-action form reset would revert the radios. */}
+      <input type="hidden" name="type" value={value} />
       <div className="grid gap-2 sm:grid-cols-2">
         {TYPES.map((type) => {
           const Icon = type.icon;
@@ -69,7 +71,7 @@ export function WorkspaceTypePicker({
             >
               <input
                 type="radio"
-                name="type"
+                name="type-choice"
                 value={type.value}
                 checked={checked}
                 onChange={() => {

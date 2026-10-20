@@ -7,3 +7,5 @@ export * from './schemas/error.js';
 export * from './schemas/health.js';
 export * from './schemas/users.js';
 export * from './schemas/workspaces.js';
+export * from './domain/access.js';
+export * from './schemas/projects.js';

@@ -9,6 +9,9 @@ export interface AuditEventInput {
   outcome: AuditOutcome;
   resourceType: string;
   resourceId?: string | null;
+  /** Scope of the event inside the workspace (project activity, environment history). */
+  projectId?: string | null;
+  environmentId?: string | null;
   requestId?: string | null;
   /** Non-sensitive context only. Never secret values, tokens or passwords. */
   metadata?: Prisma.InputJsonObject;
@@ -28,6 +31,8 @@ export class AuditRepository {
         outcome: event.outcome,
         resourceType: event.resourceType,
         resourceId: event.resourceId ?? null,
+        projectId: event.projectId ?? null,
+        environmentId: event.environmentId ?? null,
         requestId: event.requestId ?? null,
         metadata: event.metadata ?? {},
       },

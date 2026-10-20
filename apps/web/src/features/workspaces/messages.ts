@@ -28,3 +28,21 @@ export const GENERIC_ERROR = 'Something went wrong. Please try again.';
 export function messageFor(code: string | undefined): string {
   return (code === undefined ? undefined : API_ERROR_MESSAGES[code]) ?? GENERIC_ERROR;
 }
+
+Object.assign(API_ERROR_MESSAGES, {
+  PROJECT_SLUG_TAKEN: 'A project with that URL already exists in this workspace.',
+  PROJECT_ARCHIVED: 'This project is archived. Restore it to make changes.',
+  PROJECT_NOT_ARCHIVED: 'This project is not archived.',
+  ENVIRONMENT_SLUG_TAKEN: 'An environment with that URL already exists in this project.',
+  ENVIRONMENT_NAME_TAKEN: 'An environment with that name already exists in this project.',
+  ENVIRONMENT_ARCHIVED: 'This environment is archived. Restore it to make changes.',
+  ENVIRONMENT_NOT_ARCHIVED: 'This environment is not archived.',
+  PROTECTION_REQUIRED:
+    'This environment is protected. Only people who can manage protection may change it.',
+  NOT_WORKSPACE_MEMBER: 'Only active members of this workspace can be added.',
+  ALREADY_PROJECT_MEMBER: 'That person is already a member of this project.',
+  NOT_PROJECT_MEMBER: 'Add this person to the project before granting environment access.',
+  CANNOT_CHANGE_OWN_ACCESS: 'You cannot change your own project role or environment access.',
+  TEMPLATE_NOT_FOUND: 'That template no longer exists.',
+  TEMPLATE_NAME_TAKEN: 'A template with that name already exists.',
+});

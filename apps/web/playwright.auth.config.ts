@@ -26,6 +26,8 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   timeout: 60_000,
+  // next dev compiles each route on first visit; allow for it in assertions.
+  expect: { timeout: 15_000 },
   use: {
     baseURL: webOrigin,
     trace: 'retain-on-failure',
@@ -39,7 +41,7 @@ export default defineConfig({
     },
     {
       name: 'authenticated',
-      testMatch: /(app-shell|workspaces)\.spec\.ts/,
+      testMatch: /(app-shell|workspaces|projects)\.spec\.ts/,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: 'e2e-auth/.auth/user.json' },
     },

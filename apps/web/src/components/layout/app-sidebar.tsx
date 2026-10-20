@@ -3,7 +3,7 @@
 import { KeyRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { isActivePath, type NavItem, PRIMARY_NAV, SECONDARY_NAV } from '@/config/navigation';
+import { activeNavHref, type NavItem, PRIMARY_NAV, SECONDARY_NAV } from '@/config/navigation';
 import { cn } from '@/lib/utils';
 
 function NavLink({
@@ -15,7 +15,7 @@ function NavLink({
   pathname: string;
   onNavigate?: () => void;
 }) {
-  const active = isActivePath(pathname, item.href);
+  const active = activeNavHref(pathname) === item.href;
   const Icon = item.icon;
   return (
     <Link

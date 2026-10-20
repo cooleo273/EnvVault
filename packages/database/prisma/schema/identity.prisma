@@ -45,6 +45,10 @@ model User {
   tokenRevocation           AuthTokenRevocation?
   stepUpGrants              AuthStepUpGrant[]
   lastWorkspace             Workspace?              @relation("UserLastWorkspace", fields: [lastWorkspaceId], references: [id], onDelete: SetNull)
+  projectsCreated           Project[]               @relation("ProjectCreatedBy")
+  environmentsCreated       Environment[]           @relation("EnvironmentCreatedBy")
+  projectFavorites          ProjectFavorite[]
+  projectVisits             ProjectVisit[]
 
   @@index([email])
   @@index([lastWorkspaceId])

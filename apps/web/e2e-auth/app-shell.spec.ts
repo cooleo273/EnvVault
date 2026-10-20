@@ -41,10 +41,10 @@ test.describe('app shell', () => {
     await expect(
       page.getByRole('region', { name: 'System status' }).getByText('Live'),
     ).toBeVisible();
-    await page.goto('/projects');
+    await page.goto('/integrations');
     await expect(page.getByText('Preview', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Not available yet')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'New project' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Add integration' })).toBeDisabled();
   });
 
   test('Team Members shows the active workspace members on its own page', async ({ page }) => {
@@ -72,7 +72,8 @@ test.describe('app shell', () => {
     );
     await nav.getByRole('link', { name: /Projects/ }).focus();
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/projects$/);
+    // The shortcut opens the active workspace's projects; the entry stays highlighted.
+    await expect(page).toHaveURL(/\/workspaces\/[0-9a-f-]{36}\/projects$/);
     await expect(nav.getByRole('link', { name: /Projects/ })).toHaveAttribute(
       'aria-current',
       'page',

@@ -1,27 +1,11 @@
-import { PlusIcon } from 'lucide-react';
-import type { Metadata } from 'next';
-import { PageHeader } from '@/components/layout/page-header';
-import { Button } from '@/components/ui/button';
-import { ProjectsView } from './projects-view';
+import { redirect } from 'next/navigation';
+import { resolveLanding } from '@/lib/workspaces/landing';
+import { getMe } from '@/lib/workspaces/server';
 
-export const metadata: Metadata = { title: 'Projects' };
-
-export default function ProjectsPage() {
-  return (
-    <>
-      <PageHeader
-        title="Projects"
-        description="Applications in the current workspace and their environments."
-        status="preview"
-        breadcrumbs={[{ label: 'Overview', href: '/dashboard' }, { label: 'Projects' }]}
-        actions={
-          <Button disabled title="Available in Phase 1">
-            <PlusIcon aria-hidden="true" />
-            New project
-          </Button>
-        }
-      />
-      <ProjectsView />
-    </>
-  );
+/** Sidebar shortcut: the projects of the active workspace. */
+export default async function ProjectsShortcut() {
+  const me = await getMe();
+  if (!me) redirect('/workspaces');
+  const landing = resolveLanding(me);
+  redirect(landing.kind === 'onboarding' ? '/onboarding' : `${landing.href}/projects`);
 }

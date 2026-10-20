@@ -1,23 +1,36 @@
 model Project {
-  id          String    @id @default(uuid(7)) @db.Uuid
-  workspaceId String    @map("workspace_id") @db.Uuid
-  name        String    @db.VarChar(100)
+  id          String        @id @default(uuid(7)) @db.Uuid
+  workspaceId String        @map("workspace_id") @db.Uuid
+  name        String        @db.VarChar(100)
   /// Unique per workspace among non-deleted projects (partial unique index).
-  slug        String    @db.VarChar(63)
-  description String?   @db.VarChar(1000)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  slug        String        @db.VarChar(63)
+  description String?       @db.VarChar(1000)
+  status      ProjectStatus @default(ACTIVE)
+  /// Set while ARCHIVED (CHECK keeps it consistent with status).
+  archivedAt  DateTime?     @map("archived_at") @db.Timestamptz(3)
+  /// Visual identifier: a named icon from the UI's icon set.
+  icon        String        @default("folder") @db.VarChar(32)
+  /// Visual identifier: a named color from the UI's palette.
+  color       String        @default("slate") @db.VarChar(16)
+  createdById String?       @map("created_by_id") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
   /// Soft delete: recovery window for accidental deletion of many secrets.
-  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(3)
+  deletedAt   DateTime?     @map("deleted_at") @db.Timestamptz(3)
 
   workspace              Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy              User?                   @relation("ProjectCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   environments           Environment[]
   memberships            ProjectMembership[]
+  favorites              ProjectFavorite[]
+  visits                 ProjectVisit[]
   serviceIdentities      ServiceIdentity[]
   integrationConnections IntegrationConnection[]
 
   @@unique([workspaceId, id])
   @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([createdById])
   @@map("projects")
 }
 
@@ -46,24 +59,35 @@ model ProjectMembership {
 /// A custom deployment environment (Development, QA, Staging, Production, ...)
 /// belonging to exactly one project.
 model Environment {
-  id                String          @id @default(uuid(7)) @db.Uuid
-  workspaceId       String          @map("workspace_id") @db.Uuid
-  projectId         String          @map("project_id") @db.Uuid
+  id                String            @id @default(uuid(7)) @db.Uuid
+  workspaceId       String            @map("workspace_id") @db.Uuid
+  projectId         String            @map("project_id") @db.Uuid
   /// Free-form display name, unique per project (case-insensitive, live rows).
-  name              String          @db.VarChar(64)
+  name              String            @db.VarChar(64)
   /// URL/CLI identifier, unique per project among live rows.
-  slug              String          @db.VarChar(63)
-  kind              EnvironmentKind @default(OTHER)
-  description       String?         @db.VarChar(1000)
-  sortOrder         Int             @default(0) @map("sort_order")
+  slug              String            @db.VarChar(63)
+  kind              EnvironmentKind   @default(OTHER)
+  description       String?           @db.VarChar(1000)
+  sortOrder         Int               @default(0) @map("sort_order")
   /// Protected environments require change requests (future phase).
-  isProtected       Boolean         @default(false) @map("is_protected")
-  requiredApprovals Int             @default(0) @map("required_approvals")
-  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deletedAt         DateTime?       @map("deleted_at") @db.Timestamptz(3)
+  isProtected       Boolean           @default(false) @map("is_protected")
+  requiredApprovals Int               @default(0) @map("required_approvals")
+  status            EnvironmentStatus @default(ACTIVE)
+  /// Set while ARCHIVED (CHECK keeps it consistent with status).
+  archivedAt        DateTime?         @map("archived_at") @db.Timestamptz(3)
+  /// Visual identifiers from the UI's palette and icon set.
+  color             String            @default("slate") @db.VarChar(16)
+  icon              String?           @db.VarChar(32)
+  /// Variable keys this environment is expected to define, from a template:
+  /// JSON array of `{ key, description }`. Names only, never values.
+  expectedKeys      Json              @default("[]") @map("expected_keys") @db.JsonB
+  createdById       String?           @map("created_by_id") @db.Uuid
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt         DateTime?         @map("deleted_at") @db.Timestamptz(3)
 
   project        Project              @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "environments_project_fkey")
+  createdBy      User?                @relation("EnvironmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   secrets        Secret[]
   accessPolicies AccessPolicy[]
   changeRequests ChangeRequest[]
@@ -72,7 +96,39 @@ model Environment {
   @@unique([workspaceId, id])
   @@unique([workspaceId, projectId, id])
   @@index([projectId])
+  @@index([createdById])
   @@map("environments")
+}
+
+/// A user's favorite (pinned) project. Personal preference, not access: the
+/// project is only listed while the user still has access to it.
+model ProjectFavorite {
+  userId      String   @map("user_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  projectId   String   @map("project_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "project_favorites_project_fkey")
+
+  @@id([userId, projectId])
+  @@index([userId, workspaceId])
+  @@map("project_favorites")
+}
+
+/// When a user last opened a project (for "recent projects"). Preference only.
+model ProjectVisit {
+  userId      String   @map("user_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  projectId   String   @map("project_id") @db.Uuid
+  visitedAt   DateTime @default(now()) @map("visited_at") @db.Timestamptz(3)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "project_visits_project_fkey")
+
+  @@id([userId, projectId])
+  @@index([userId, workspaceId, visitedAt(sort: Desc)])
+  @@map("project_visits")
 }
 
 /// Reusable set of environment definitions applied when creating projects.

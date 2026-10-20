@@ -11,6 +11,7 @@ import { APP_ENV, AppConfigModule } from './config/config.module.js';
 import type { Env } from './config/env.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './health/health.module.js';
+import { ProjectsModule } from './projects/projects.module.js';
 import { WorkspacesModule } from './workspaces/workspaces.module.js';
 
 @Module({})
@@ -46,6 +47,7 @@ export class AppModule {
         HealthModule,
         AuthModule,
         WorkspacesModule,
+        ProjectsModule,
       ],
       providers: [
         // Global guards run in this order: rate limit, authenticate, authorize.

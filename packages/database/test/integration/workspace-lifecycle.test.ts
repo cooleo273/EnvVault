@@ -91,12 +91,12 @@ describe('workspace lifecycle', () => {
     expect(getConstraintViolation(error)?.constraint).toBe('workspaces_description_not_blank_chk');
   });
 
-  it('never grants project, environment or secret permissions through workspace roles', () => {
+  it('never grants secret values, deployment or approvals through workspace roles', () => {
     const workspaceRoles = SYSTEM_ROLES.filter((r) => r.scope === 'WORKSPACE');
     expect(workspaceRoles.map((r) => r.key)).toEqual(['owner', 'admin', 'member', 'viewer']);
     for (const definition of workspaceRoles) {
       for (const key of definition.permissions) {
-        expect(key).toMatch(/^(workspace|member|role|audit):/);
+        expect(key).not.toMatch(/^(secret|change_request):|^environment:deploy$/);
       }
     }
   });

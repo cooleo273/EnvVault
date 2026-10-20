@@ -37,12 +37,35 @@ describe('permission and role catalog', () => {
     );
   });
 
-  it('never grants secrets through workspace membership alone', () => {
+  it('never grants secret values, deployment or change approval through workspace roles', () => {
     for (const key of ['owner', 'admin', 'member', 'viewer']) {
       for (const permission of roleByKey(key).permissions) {
-        expect(permission).not.toMatch(/^(secret|environment|project|access_policy):/);
+        expect(permission).not.toMatch(/^(secret|change_request):|^environment:deploy$/);
       }
     }
+  });
+
+  it('lets workspace owners and admins administer projects, and members create them', () => {
+    for (const key of ['owner', 'admin']) {
+      expect(roleByKey(key).permissions).toEqual(
+        expect.arrayContaining(['project:read', 'project_member:manage', 'environment:protect']),
+      );
+    }
+    expect(roleByKey('member').permissions).toContain('project:create');
+    expect(roleByKey('member').permissions).not.toContain('project:read');
+    expect(roleByKey('viewer').permissions).not.toContain('project:create');
+  });
+
+  it('defines the four project roles with least privilege', () => {
+    const scoped = SYSTEM_ROLES.filter((r) => r.scope === 'PROJECT').map((r) => r.name);
+    expect(scoped).toEqual(['Project Admin', 'Developer', 'Viewer', 'Deployment Operator']);
+    for (const key of ['project-developer', 'project-viewer', 'project-deployer']) {
+      const permissions = roleByKey(key).permissions;
+      for (const admin of ['project:update', 'project_member:manage', 'environment:protect']) {
+        expect(permissions).not.toContain(admin);
+      }
+    }
+    expect(roleByKey('project-deployer').permissions).not.toContain('secret:read');
   });
 
   it('separates listing secrets from reading their values', () => {

@@ -119,3 +119,58 @@ test('pending invitations appear in-app and can be declined', async ({ browser }
     ownerPage.getByRole('table', { name: 'Workspace invitations' }).getByText('Declined'),
   ).toBeVisible();
 });
+
+test('project access: hidden until added, then developer rights only', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const owner = newAccount('powner');
+  const dev = newAccount('pdev');
+  const ownerPage = await (await browser.newContext()).newPage();
+  const devPage = await (await browser.newContext()).newPage();
+
+  await signUpAndVerify(ownerPage, owner);
+  const workspaceId = await completeOnboarding(ownerPage, 'Project Team');
+  await ownerPage.goto(`/workspaces/${workspaceId}/invitations`);
+  await ownerPage.getByLabel('Email address').fill(dev.email);
+  await ownerPage.getByRole('button', { name: 'Invite', exact: true }).click();
+  await expect(ownerPage.getByText(/It was not emailed/)).toBeVisible();
+
+  await signUpAndVerify(devPage, dev);
+  await devPage
+    .getByRole('list', { name: 'Invitations for you' })
+    .getByRole('button', { name: /Accept/ })
+    .click();
+  await expect(devPage).toHaveURL(new RegExp(`/workspaces/${workspaceId}\\?joined=1$`));
+
+  // The owner creates a project; the member cannot see it yet.
+  await ownerPage.goto(`/workspaces/${workspaceId}/projects/new`);
+  await ownerPage.getByLabel('Project name').fill('Payments');
+  await ownerPage.getByRole('button', { name: 'Create project' }).click();
+  await expect(ownerPage).toHaveURL(/\/projects\/[0-9a-f-]{36}\?created=1$/, { timeout: 30_000 });
+  const projectUrl = ownerPage.url().replace('?created=1', '');
+  await devPage.goto(`/workspaces/${workspaceId}/projects`);
+  await expect(devPage.getByRole('heading', { name: 'No projects yet' })).toBeVisible();
+  await devPage.goto(projectUrl);
+  await expect(devPage.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();
+
+  // Added as Developer: can see the project, not administer it.
+  await ownerPage.goto(`${projectUrl}/members`);
+  await ownerPage
+    .getByLabel('Workspace member')
+    .selectOption({ label: `${dev.name} (${dev.email})` });
+  await ownerPage.getByLabel('Project role', { exact: true }).selectOption('project-developer');
+  await ownerPage.getByRole('button', { name: 'Add to project' }).click();
+  await expect(ownerPage.getByText('Member added.')).toBeVisible();
+
+  await devPage.goto(projectUrl);
+  await expect(devPage.getByRole('heading', { level: 1, name: 'Payments' })).toBeVisible();
+  const tabs = devPage.getByRole('navigation', { name: 'Workspace sections' }).last();
+  await expect(tabs.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+  await expect(devPage.getByRole('link', { name: 'New environment' })).toHaveCount(0);
+  await devPage
+    .getByRole('link', { name: /^Production/ })
+    .first()
+    .click();
+  await expect(
+    devPage.getByText('secret access is never inherited', { exact: false }),
+  ).toBeVisible();
+});

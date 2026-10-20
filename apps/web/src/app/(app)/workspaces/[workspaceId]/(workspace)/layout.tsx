@@ -23,6 +23,7 @@ export default async function WorkspaceLayout({
 
   const tabs = [
     { href: base, label: 'Overview' },
+    { href: `${base}/projects`, label: 'Projects' },
     { href: `${base}/members`, label: 'Members' },
     ...(can('member:invite') ? [{ href: `${base}/invitations`, label: 'Invitations' }] : []),
     ...(can('workspace:update') || can('workspace:archive') || can('workspace:delete')
