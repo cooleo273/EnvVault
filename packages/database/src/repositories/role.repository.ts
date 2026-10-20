@@ -33,4 +33,51 @@ export class RoleRepository {
       select: { id: true, key: true, name: true, description: true },
     });
   }
+
+  /** PROJECT- or ENVIRONMENT-scoped roles of the workspace, with their permissions. */
+  async listScopedRoles(
+    scope: WorkspaceScope,
+    roleScope: 'PROJECT' | 'ENVIRONMENT',
+  ): Promise<ScopedRoleRecord[]> {
+    const roles = await this.db.role.findMany({
+      where: { workspaceId: scope.workspaceId, scope: roleScope },
+      select: scopedSelect,
+      orderBy: [{ isSystem: 'desc' }, { createdAt: 'asc' }],
+    });
+    return roles.map(toScoped);
+  }
+
+  async findScopedRole(
+    scope: WorkspaceScope,
+    roleScope: 'PROJECT' | 'ENVIRONMENT',
+    key: string,
+  ): Promise<ScopedRoleRecord | null> {
+    const role = await this.db.role.findFirst({
+      where: { workspaceId: scope.workspaceId, scope: roleScope, key },
+      select: scopedSelect,
+    });
+    return role ? toScoped(role) : null;
+  }
+}
+
+export interface ScopedRoleRecord extends WorkspaceRoleRecord {
+  permissions: string[];
+}
+
+const scopedSelect = {
+  id: true,
+  key: true,
+  name: true,
+  description: true,
+  permissions: { select: { permission: { select: { key: true } } } },
+} as const;
+
+function toScoped(role: {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  permissions: { permission: { key: string } }[];
+}): ScopedRoleRecord {
+  return { ...role, permissions: role.permissions.map((p) => p.permission.key).sort() };
 }

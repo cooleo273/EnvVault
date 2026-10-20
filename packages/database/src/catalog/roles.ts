@@ -9,13 +9,10 @@ export interface SystemRoleDefinition {
   permissions: readonly PermissionKey[];
 }
 
-const PROJECT_READ: PermissionKey[] = ['project:read', 'environment:read', 'secret:list'];
-
 /**
- * Workspace-level permissions. Deliberately excludes every project,
- * environment and secret permission: workspace membership never grants
- * access to secrets on its own. Project and environment roles (below) and
- * access policies grant that separately (Phase 2).
+ * Workspace administration. Never includes `secret:*`, `environment:deploy`
+ * or `change_request:*`: a workspace role never reveals or changes secret
+ * values, in any project.
  */
 const WORKSPACE_ADMIN: PermissionKey[] = [
   'workspace:read',
@@ -27,10 +24,39 @@ const WORKSPACE_ADMIN: PermissionKey[] = [
 ];
 
 /**
+ * Administration of every project in the workspace (metadata, environments,
+ * protection, project membership and environment grants) — still without
+ * any secret value permission. See `@envvault/shared` evaluateProjectAccess.
+ */
+const PROJECT_ADMINISTRATION: PermissionKey[] = [
+  'project:create',
+  'project:read',
+  'project:update',
+  'project:archive',
+  'project:delete',
+  'project_member:read',
+  'project_member:manage',
+  'environment:create',
+  'environment:read',
+  'environment:update',
+  'environment:delete',
+  'environment:protect',
+  'access_policy:manage',
+];
+
+const PROJECT_READ: PermissionKey[] = [
+  'project:read',
+  'project_member:read',
+  'environment:read',
+  'secret:list',
+];
+
+/**
  * Built-in roles copied into every workspace (`roles.is_system = true`).
- * Workspace roles apply to the workspace itself; project roles to one
- * project; environment roles are granted per environment via access
- * policies. Anything not granted is denied.
+ * Workspace roles apply to the workspace and administer its projects; project
+ * roles apply to one project and its environments; environment roles are
+ * granted per environment via access policies. Anything not granted is
+ * denied, and protected environments never inherit data-plane permissions.
  */
 export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
   {
@@ -41,6 +67,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
     scope: 'WORKSPACE',
     permissions: [
       ...WORKSPACE_ADMIN,
+      ...PROJECT_ADMINISTRATION,
       'role:manage',
       'workspace:archive',
       'workspace:delete',
@@ -50,16 +77,18 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
   {
     key: 'admin',
     name: 'Admin',
-    description: 'Manages workspace settings, members and invitations. Cannot manage owners.',
+    description:
+      'Manages workspace settings, members, invitations and projects. Cannot manage owners or read secrets by default.',
     scope: 'WORKSPACE',
-    permissions: WORKSPACE_ADMIN,
+    permissions: [...WORKSPACE_ADMIN, ...PROJECT_ADMINISTRATION],
   },
   {
     key: 'member',
     name: 'Member',
-    description: 'Uses the workspace. Project access is granted separately.',
+    description:
+      'Uses the workspace and can create projects. Project access is granted per project.',
     scope: 'WORKSPACE',
-    permissions: ['workspace:read', 'member:read'],
+    permissions: ['workspace:read', 'member:read', 'project:create'],
   },
   {
     key: 'viewer',
@@ -70,21 +99,26 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
   },
   {
     key: 'project-admin',
-    name: 'Project admin',
-    description: 'Manages the project, its environments, secrets and access.',
+    name: 'Project Admin',
+    description:
+      'Manages the project, its environments, protection and members. Secret access in protected environments still needs an explicit grant.',
     scope: 'PROJECT',
     permissions: [
       ...PROJECT_READ,
       'project:update',
+      'project:archive',
+      'project:delete',
+      'project_member:manage',
       'environment:create',
       'environment:update',
       'environment:delete',
+      'environment:protect',
+      'access_policy:manage',
       'secret:read',
       'secret:write',
       'secret:delete',
       'secret:rollback',
       'service_identity:read',
-      'access_policy:manage',
       'change_request:create',
       'change_request:review',
       'change_request:apply',
@@ -94,29 +128,58 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
   },
   {
     key: 'project-developer',
-    name: 'Project developer',
-    description: 'Reads and writes secrets in unprotected environments.',
+    name: 'Developer',
+    description: 'Works with secrets in unprotected environments. Cannot change project settings.',
     scope: 'PROJECT',
     permissions: [...PROJECT_READ, 'secret:read', 'secret:write', 'change_request:create'],
   },
   {
     key: 'project-viewer',
-    name: 'Project viewer',
-    description: 'Sees environments and secret keys, but not values.',
+    name: 'Viewer',
+    description: 'Sees the project, its environments and secret keys, but not values.',
     scope: 'PROJECT',
     permissions: PROJECT_READ,
   },
   {
+    key: 'project-deployer',
+    name: 'Deployment Operator',
+    description:
+      'Deploys unprotected environments with machine credentials (future phase); protected ones need a grant.',
+    scope: 'PROJECT',
+    permissions: [...PROJECT_READ, 'environment:deploy'],
+  },
+  {
+    key: 'environment-viewer',
+    name: 'Metadata viewer',
+    description: 'Sees this environment’s metadata only.',
+    scope: 'ENVIRONMENT',
+    permissions: ['environment:read'],
+  },
+  {
+    key: 'environment-maintainer',
+    name: 'Maintainer',
+    description: 'Edits this environment’s metadata.',
+    scope: 'ENVIRONMENT',
+    permissions: ['environment:read', 'environment:update'],
+  },
+  {
+    key: 'environment-deployer',
+    name: 'Deployer',
+    description: 'Deploys this environment with machine credentials (future phase).',
+    scope: 'ENVIRONMENT',
+    permissions: ['environment:read', 'secret:list', 'environment:deploy'],
+  },
+  {
     key: 'environment-reader',
-    name: 'Environment reader',
-    description: 'Reads secret values in one environment.',
+    name: 'Secret reader',
+    description: 'Reads secret values in this environment (Phase 3).',
     scope: 'ENVIRONMENT',
     permissions: ['environment:read', 'secret:list', 'secret:read'],
   },
   {
     key: 'environment-writer',
-    name: 'Environment writer',
-    description: 'Reads and writes secret values in one environment.',
+    name: 'Secret writer',
+    description: 'Reads and writes secret values in this environment (Phase 3).',
     scope: 'ENVIRONMENT',
     permissions: [
       'environment:read',
@@ -129,8 +192,9 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
   },
   {
     key: 'environment-approver',
-    name: 'Environment approver',
-    description: 'Reviews change requests for one environment without reading values.',
+    name: 'Approver',
+    description:
+      'Reviews change requests for this environment without reading values (future phase).',
     scope: 'ENVIRONMENT',
     permissions: ['environment:read', 'secret:list', 'change_request:review'],
   },

@@ -3,7 +3,13 @@ import { AuditRepository } from './audit.repository.js';
 import { AuthStateRepository } from './auth-state.repository.js';
 import { InvitationRepository } from './invitation.repository.js';
 import { MembershipRepository } from './membership.repository.js';
-import { EnvironmentRepository, ProjectRepository } from './project.repository.js';
+import { AccessPolicyRepository } from './access-policy.repository.js';
+import { AccessRepository } from './access.repository.js';
+import { ActivityRepository } from './activity.repository.js';
+import { EnvironmentRepository } from './environment.repository.js';
+import { ProjectMemberRepository } from './project-member.repository.js';
+import { ProjectRepository } from './project.repository.js';
+import { TemplateRepository } from './template.repository.js';
 import { RoleRepository } from './role.repository.js';
 import { UserRepository } from './user.repository.js';
 import { WorkspaceRepository } from './workspace.repository.js';
@@ -21,8 +27,42 @@ export {
   type ActiveMembership,
   type MemberRecord,
 } from './membership.repository.js';
-export { RoleRepository, type WorkspaceRoleRecord } from './role.repository.js';
-export { EnvironmentRepository, ProjectRepository } from './project.repository.js';
+export {
+  RoleRepository,
+  type ScopedRoleRecord,
+  type WorkspaceRoleRecord,
+} from './role.repository.js';
+export {
+  ProjectRepository,
+  type CreateProjectData,
+  type NewEnvironmentData,
+  type ProjectListQuery,
+  type ProjectRecord,
+  type ProjectViewer,
+} from './project.repository.js';
+export {
+  EnvironmentRepository,
+  type EnvironmentRecord,
+  type EnvironmentWithGrants,
+} from './environment.repository.js';
+export {
+  AccessRepository,
+  type EnvironmentAccessContext,
+  type ProjectAccessContext,
+} from './access.repository.js';
+export { AccessPolicyRepository, type EnvironmentGrantRecord } from './access-policy.repository.js';
+export {
+  ActivityRepository,
+  decodeActivityCursor,
+  encodeActivityCursor,
+  type ActivityRecord,
+} from './activity.repository.js';
+export {
+  ProjectMemberRepository,
+  type InheritedAccessRecord,
+  type ProjectMemberRecord,
+} from './project-member.repository.js';
+export { TemplateRepository, type TemplateRecord } from './template.repository.js';
 export { UserRepository, type UserProfile, type VerifiedIdentity } from './user.repository.js';
 export {
   slugify,
@@ -43,11 +83,16 @@ export {
  */
 export function createRepositories(db: DbClient) {
   return {
+    access: new AccessRepository(db),
+    accessPolicies: new AccessPolicyRepository(db),
+    activity: new ActivityRepository(db),
     audit: new AuditRepository(db),
     authState: new AuthStateRepository(db),
     invitations: new InvitationRepository(db),
     memberships: new MembershipRepository(db),
     projects: new ProjectRepository(db),
+    projectMembers: new ProjectMemberRepository(db),
+    templates: new TemplateRepository(db),
     roles: new RoleRepository(db),
     environments: new EnvironmentRepository(db),
     users: new UserRepository(db),

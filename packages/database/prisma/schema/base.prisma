@@ -52,6 +52,18 @@ enum InvitationStatus {
   DECLINED
 }
 
+/// Lifecycle of a project. ARCHIVED projects are read-only until restored.
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+/// Lifecycle of an environment. ARCHIVED environments are read-only until restored.
+enum EnvironmentStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 /// Presentation and onboarding hint; both kinds have the same security model.
 enum WorkspaceType {
   PERSONAL
