@@ -5,9 +5,10 @@ database. This document covers the format and lifecycle. Key storage and rotatio
 [key-management.md](key-management.md), and the attacker model is in
 [threat-model.md](threat-model.md).
 
-> **Status (Phase 3A).** The cryptographic layer (`packages/crypto`) and its NestJS
-> integration (`apps/api/src/encryption`) are implemented and tested with synthetic
-> values only. Secret CRUD, which writes real `secret_versions` rows, arrives in Phase 3B.
+> **Status (Phase 3B).** The cryptographic layer (`packages/crypto`) and its NestJS
+> integration (`apps/api/src/encryption`) protect every variable value written through the
+> secrets API ([secrets.md](secrets.md)). Keys still come from the self managed
+> development provider, so only synthetic values should be stored.
 
 ## 1. Design
 
@@ -134,18 +135,52 @@ OpenSSL details, and never carry a `cause`.
 - `KeyManagementService`: `isConfigured`, `status()` (key metadata only) and
   `provider()`.
 
-None of this is reachable over HTTP. Phase 3B adds authenticated, authorized secret
-routes on top, using `@RequireEnvironmentPermission('secret:read')` and related
-permissions.
+None of this is reachable over HTTP directly. `SecretVault` (`apps/api/src/secrets`) is the
+only caller and every secret service goes through it: it builds the context, seals values
+into new versions, opens stored versions (auditing failures by error code) and sanitises
+database errors. Values are decrypted only after the permission, step up and rate limit
+checks of the route. There is no second encryption mechanism and no plaintext fallback.
 
-## 7. Lifecycle of a secret version (Phase 3B)
+## 7. Lifecycle of a secret version
 
-1. The API generates the version id (UUIDv7) and builds the context.
-2. `encryptSecret` creates a fresh DEK, encrypts the value, wraps the DEK under the
-   active KEK and zeroes the DEK.
-3. The envelope is inserted into `secret_versions` in the same transaction as the
-   metadata.
-4. Reading loads the row, validates the envelope, unwraps with exactly the referenced
-   key version, then decrypts and authenticates.
-5. Rotation re-wraps DEKs without touching `ciphertext`, `iv` or `auth_tag` (see
-   [key-management.md](key-management.md)).
+1. `SecretsService` chooses the secret id and the version id (UUIDv7) before anything is
+   written, because both are part of the context. Ids are lowercased first; the AAD only
+   accepts canonical lowercase UUIDs.
+2. `encryptSecret` creates a fresh DEK, encrypts the value, wraps the DEK under the active
+   KEK and zeroes the DEK. This happens **before** the database transaction: if it fails,
+   nothing is written and a `secret.encryption_failed` audit event records the error code.
+3. The provider key is registered once per workspace in `encryption_keys`
+   (`kms_provider`, `kms_key_ref` = key id, status `ACTIVE`; a new key id demotes the previous
+   row to `DECRYPT_ONLY`). Registration is serialised with a per workspace advisory lock.
+4. The metadata, the version row (envelope columns plus `kms_key_version`) and the audit
+   event are inserted in one transaction. The current version pointer is a deferred foreign
+   key checked at commit.
+5. A reveal loads the current row, rebuilds the envelope (`envelopeFromRow`), validates it,
+   unwraps with exactly the referenced key version, then decrypts and authenticates. Key
+   problems map to `503 ENCRYPTION_UNAVAILABLE`; authentication or format failures map to
+   `500 SECRET_INTEGRITY_ERROR` and a `secret.decryption_failed` event. Neither response says
+   which check failed.
+6. **Imports** encrypt every selected value the same way (one DEK per value, origin `IMPORT`)
+   before their single transaction starts; a failure leaves the database untouched.
+7. **Rollbacks** decrypt the chosen historical version on the server, then encrypt the value
+   again with a fresh DEK under the **active** KEK as a new version (origin `ROLLBACK`). The
+   source version is not modified, and a rollback after a key rotation produces a version
+   wrapped by the new key version. Old versions keep decrypting with their own key version.
+8. **Comparisons** (version compare, import preview) decrypt on the server and compare with
+   `crypto.timingSafeEqual`; only the result leaves the server.
+9. Rotation rewraps DEKs without touching `ciphertext`, `iv` or `auth_tag` (see
+   [key-management.md](key-management.md)). `kms_key_version` is the column a rewrap job
+   updates; no such job runs yet.
+
+## 8. Unresolved risks
+
+- **Self managed keys.** The local keyring sits in a file or an environment variable and in
+  API memory. Anyone with that file or a memory dump can decrypt every value. There is no
+  HSM, no key access policy and no independent audit of key use. A managed KMS provider is
+  required before real secrets are stored.
+- **Lost keyring means lost data.** There is no escrow. A replaced keyring makes existing
+  values undecryptable (`ENCRYPTION_UNAVAILABLE`); the restart test covers both cases.
+- **Plaintext in process memory.** Values are JavaScript strings in the API and the web
+  server while a request runs. Buffers are zeroed; strings cannot be.
+- **No automated rewrap job** over `secret_versions` yet, so retiring an old key version is a
+  manual, reference counted operation.

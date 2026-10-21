@@ -1,6 +1,6 @@
 # EnvVault Architecture
 
-> Status: **Phase 3A — Self-managed encryption and key management** (on top of Phase 2 projects, environments and hierarchical authorization). This document describes the architecture as
+> Status: **Phase 3C: import, export, version history, rollback and bulk operations** (on top of Phase 3B secrets CRUD, Phase 3A envelope encryption and Phase 2 projects, environments and hierarchical authorization). This document describes the architecture as
 > implemented today and the boundaries that later phases build on. Sections marked
 > _Planned_ describe intended designs that are not implemented yet.
 
@@ -124,6 +124,11 @@ src/
     logging/              pino-http configuration, request-ID resolution
   database/               DatabaseService (Prisma client lifecycle)
   health/                 GET /api/v1/health, GET /api/v1/health/ready
+  encryption/             EncryptionModule: key provider, SecretEncryptionService (no routes)
+  secrets/                SecretsModule: SecretTransfersController (import, export, bulk),
+                          SecretsController (CRUD, reveal, history, rollback), SecretVault
+                          (the only path to the cipher), SecretAuthorizationService,
+                          SecretRateLimiter and one service per concern
 ```
 
 New domains (workspaces, projects, environments, secrets) are added as feature modules
@@ -265,8 +270,9 @@ flow, constraint catalogue and deletion policy.
 
 Implemented in Phase 3A (`packages/crypto`, `apps/api/src/encryption`): envelope
 encryption with AES-256-GCM from `node:crypto`. Each secret version gets a fresh data
-key, and a key encryption key held by a `KeyManagementProvider` wraps it. Secret CRUD
-follows in Phase 3B.
+key, and a key encryption key held by a `KeyManagementProvider` wraps it. Since Phase 3B
+the secrets API ([secrets.md](secrets.md)) encrypts every value before its transaction
+starts and decrypts only in the audited reveal route.
 
 ```
  plaintext ──► SecretCipher.encryptSecret(value, {workspace, project, environment, secret, version})
@@ -369,8 +375,9 @@ developer's real database.
 
 ## 12. Known limitations
 
-- Authentication, workspaces, projects, environments, templates, project roles and
-  environment access grants are implemented. Secret CRUD is not (Phase 3).
+- Authentication, workspaces, projects, environments, templates, project roles,
+  environment access grants and secrets CRUD with encrypted versions are implemented.
+  Phase 3C adds .env import, export, version history, rollback and bulk operations.
 - Protected-environment approvals are modelled (`required_approvals`, change request
   tables) but not enforced; no approval workflow runs yet.
 - The OpenAPI route table is registered by hand next to the controllers (kept honest by a
@@ -382,7 +389,15 @@ developer's real database.
   authentication-specific limitations (beta SDK; password reset does not revoke tokens
   that were already issued).
 - Only the self-managed local key provider exists (development and test); production
-  requires a managed KMS provider. Secret CRUD is not implemented yet (Phase 3B).
+  requires a managed KMS provider. Values must stay synthetic until then.
+- Encrypted versions are kept indefinitely; purge and retention policies are not
+  implemented.
+- Per user rate limits on plaintext reads use the throttler's in memory storage: each API
+  instance counts separately until a shared store (Redis) is configured.
+- The browser only Playwright suite runs the production build over plain http, where the
+  production CSP (`upgrade-insecure-requests`) makes the browser upgrade a prefetch redirect
+  to https; the landing page test then sees `ERR_SSL_PROTOCOL_ERROR`. This affects the test
+  setup only, not https deployments.
 - Rate limiting is per instance (in-memory).
 - Redis is provisioned locally but not used by the API yet.
 - No production deployment manifests yet (`infrastructure/deployment`).

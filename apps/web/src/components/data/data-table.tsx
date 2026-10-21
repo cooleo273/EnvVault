@@ -15,6 +15,8 @@ export type SortValue = string | number | Date | null | undefined;
 export interface DataTableColumn<T> {
   id: string;
   header: string;
+  /** Rendered instead of `header` (for example a select all checkbox); `header` stays the accessible name. */
+  headerContent?: React.ReactNode;
   cell: (row: T) => React.ReactNode;
   /** Enables sorting on this column. */
   sortValue?: (row: T) => SortValue;
@@ -197,7 +199,7 @@ export function DataTable<T>({
                             <SortIcon aria-hidden="true" className="size-3.5" />
                           </button>
                         ) : (
-                          column.header
+                          (column.headerContent ?? column.header)
                         )}
                       </th>
                     );

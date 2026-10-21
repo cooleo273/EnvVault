@@ -31,6 +31,7 @@ model User {
   invitationsAccepted       WorkspaceInvitation[]   @relation("InvitationAcceptedBy")
   secretsCreated            Secret[]                @relation("SecretCreatedByUser")
   secretsUpdated            Secret[]                @relation("SecretUpdatedByUser")
+  secretsDeleted            Secret[]                @relation("SecretDeletedByUser")
   secretVersionsCreated     SecretVersion[]         @relation("SecretVersionCreatedByUser")
   rotationPoliciesCreated   SecretRotationPolicy[]  @relation("RotationPolicyCreatedBy")
   serviceIdentitiesCreated  ServiceIdentity[]       @relation("ServiceIdentityCreatedBy")

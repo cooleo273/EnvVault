@@ -1,4 +1,38 @@
 import {
+  type CreatedSecret,
+  createdSecretSchema,
+  type CreateSecretInput,
+  type ListSecretsQuery,
+  type RevealedSecret,
+  revealedSecretSchema,
+  type SecretList,
+  secretListSchema,
+  type SecretSummary,
+  secretSummarySchema,
+  type BulkActionInput,
+  type BulkResult,
+  bulkResultSchema,
+  type CompareVersionsInput,
+  type ExportInput,
+  type ExportResult,
+  exportResultSchema,
+  type ImportCommitInput,
+  type ImportPreview,
+  type ImportPreviewInput,
+  importPreviewSchema,
+  type ImportResult,
+  importResultSchema,
+  type RevealedVersion,
+  revealedVersionSchema,
+  type RollbackInput,
+  type SecretSelection,
+  secretSelectionSchema,
+  type SecretVersionPage,
+  secretVersionPageSchema,
+  type SecretVersionsQuery,
+  type VersionComparison,
+  versionComparisonSchema,
+  type UpdateSecretInput,
   type ActivityPage,
   activityPageSchema,
   type ActivityQuery,
@@ -639,6 +673,235 @@ export class EnvVaultClient {
     );
   }
 
+  /* ------------------------------------------------------------ Secrets */
+
+  /** Variable metadata of an environment, one page at a time. Never values. */
+  listSecrets(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    query: ListSecretsQuery = {},
+  ): Promise<SecretList> {
+    const { type, category, ...rest } = query;
+    return this.request(
+      `${secretsPath(workspaceId, projectId, environmentId)}${toQuery({
+        ...rest,
+        type: type?.join(','),
+        category: category?.join(','),
+      })}`,
+      { schema: secretListSchema },
+    );
+  }
+
+  createSecret(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: CreateSecretInput,
+  ): Promise<CreatedSecret> {
+    return this.request(secretsPath(workspaceId, projectId, environmentId), {
+      method: 'POST',
+      body: input,
+      schema: createdSecretSchema,
+    });
+  }
+
+  getSecret(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+  ): Promise<SecretSummary> {
+    return this.request(secretPath(workspaceId, projectId, environmentId, secretId), {
+      schema: secretSummarySchema,
+    });
+  }
+
+  /** Metadata and/or a new value. Fails with SECRET_CONFLICT when `expectedRevision` is stale. */
+  updateSecret(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+    input: UpdateSecretInput,
+  ): Promise<SecretSummary> {
+    return this.request(secretPath(workspaceId, projectId, environmentId, secretId), {
+      method: 'PATCH',
+      body: input,
+      schema: secretSummarySchema,
+    });
+  }
+
+  async deleteSecret(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+    expectedRevision?: number,
+  ): Promise<void> {
+    await this.request(
+      `${secretPath(workspaceId, projectId, environmentId, secretId)}${toQuery({ expectedRevision })}`,
+      { method: 'DELETE', schema: noContentSchema },
+    );
+  }
+
+  restoreSecret(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+  ): Promise<SecretSummary> {
+    return this.request(`${secretPath(workspaceId, projectId, environmentId, secretId)}/restore`, {
+      method: 'POST',
+      schema: secretSummarySchema,
+    });
+  }
+
+  /**
+   * Decrypts the current value (audited). Protected environments answer
+   * STEP_UP_REQUIRED until {@link stepUp} succeeded. Keep the result out of
+   * logs and caches.
+   */
+  revealSecret(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+  ): Promise<RevealedSecret> {
+    return this.request(`${secretPath(workspaceId, projectId, environmentId, secretId)}/reveal`, {
+      method: 'POST',
+      schema: revealedSecretSchema,
+    });
+  }
+
+  /** Version history (metadata only), newest first; pass `before` from `nextBefore` for older ones. */
+  listSecretVersions(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+    query: SecretVersionsQuery = {},
+  ): Promise<SecretVersionPage> {
+    return this.request(
+      `${secretPath(workspaceId, projectId, environmentId, secretId)}/versions${toQuery({ ...query })}`,
+      { schema: secretVersionPageSchema },
+    );
+  }
+
+  /** Decrypts one historical value (audited; protected environments need a step up). */
+  revealSecretVersion(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+    versionId: string,
+  ): Promise<RevealedVersion> {
+    return this.request(
+      `${secretPath(workspaceId, projectId, environmentId, secretId)}/versions/${encodeURIComponent(versionId)}/reveal`,
+      { method: 'POST', schema: revealedVersionSchema },
+    );
+  }
+
+  compareSecretVersions(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+    input: CompareVersionsInput,
+  ): Promise<VersionComparison> {
+    return this.request(
+      `${secretPath(workspaceId, projectId, environmentId, secretId)}/versions/compare`,
+      { method: 'POST', body: input, schema: versionComparisonSchema },
+    );
+  }
+
+  /** Restores an earlier value as a new version. */
+  rollbackSecret(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+    input: RollbackInput,
+  ): Promise<SecretSummary> {
+    return this.request(`${secretPath(workspaceId, projectId, environmentId, secretId)}/rollback`, {
+      method: 'POST',
+      body: input,
+      schema: secretSummarySchema,
+    });
+  }
+
+  /** Parses .env content on the server and reports what an import would do (no values). */
+  previewSecretImport(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: ImportPreviewInput,
+  ): Promise<ImportPreview> {
+    return this.request(`${secretsPath(workspaceId, projectId, environmentId)}/import/preview`, {
+      method: 'POST',
+      body: input,
+      schema: importPreviewSchema,
+    });
+  }
+
+  importSecrets(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: ImportCommitInput,
+  ): Promise<ImportResult> {
+    return this.request(`${secretsPath(workspaceId, projectId, environmentId)}/import`, {
+      method: 'POST',
+      body: input,
+      schema: importResultSchema,
+    });
+  }
+
+  /** Decrypted file content. Never log, cache or persist the result. */
+  exportSecrets(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: ExportInput,
+  ): Promise<ExportResult> {
+    return this.request(`${secretsPath(workspaceId, projectId, environmentId)}/export`, {
+      method: 'POST',
+      body: input,
+      schema: exportResultSchema,
+    });
+  }
+
+  /** Ids and revisions of every variable matching the filters (for bulk actions). */
+  secretSelection(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    query: ListSecretsQuery = {},
+  ): Promise<SecretSelection> {
+    const { type, category, ...rest } = query;
+    return this.request(
+      `${secretsPath(workspaceId, projectId, environmentId)}/selection${toQuery({
+        ...rest,
+        type: type?.join(','),
+        category: category?.join(','),
+      })}`,
+      { schema: secretSelectionSchema },
+    );
+  }
+
+  bulkSecrets(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: BulkActionInput,
+  ): Promise<BulkResult> {
+    return this.request(`${secretsPath(workspaceId, projectId, environmentId)}/bulk`, {
+      method: 'POST',
+      body: input,
+      schema: bulkResultSchema,
+    });
+  }
+
   /** After a Neon Auth password change or session revocation: invalidate issued API tokens. */
   async revokeTokens(reason: 'password_changed' | 'sessions_revoked'): Promise<void> {
     await this.request('/auth/tokens/revoke', {
@@ -733,6 +996,19 @@ function projectPath(workspaceId: string, projectId: string): string {
 
 function environmentPath(workspaceId: string, projectId: string, environmentId: string): string {
   return `${projectPath(workspaceId, projectId)}/environments/${encodeURIComponent(environmentId)}`;
+}
+
+function secretsPath(workspaceId: string, projectId: string, environmentId: string): string {
+  return `${environmentPath(workspaceId, projectId, environmentId)}/secrets`;
+}
+
+function secretPath(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  secretId: string,
+): string {
+  return `${secretsPath(workspaceId, projectId, environmentId)}/${encodeURIComponent(secretId)}`;
 }
 
 function workspacePath(workspaceId: string): string {

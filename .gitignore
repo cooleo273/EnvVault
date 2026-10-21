@@ -21,6 +21,9 @@ service-account*.json
 *.secrets
 secrets/
 .secrets/
+# Source code folders named after the feature (code only, never secret material).
+!apps/api/src/secrets/
+!apps/web/src/features/secrets/
 .envrc
 .npmrc.local
 # Development key material (pnpm crypto:init:dev)

@@ -11,7 +11,9 @@ export class ApiException extends HttpException {
     readonly code: string,
     message: string,
     readonly headers: Readonly<Record<string, string>> = {},
+    /** Field level problems (paths and messages only, never submitted values). */
+    issues?: readonly { path: string; message: string }[],
   ) {
-    super({ code, message }, status);
+    super({ code, message, ...(issues ? { issues } : {}) }, status);
   }
 }

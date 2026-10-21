@@ -14,7 +14,7 @@ independent identity (a UUID), configuration, permissions and lifecycle.
 | `kind`          | `DEVELOPMENT`, `TESTING`, `STAGING`, `PRODUCTION` or `OTHER`; a classification only                                                                        |
 | `color`, `icon` | Visual identifiers from fixed sets                                                                                                                         |
 | `sortOrder`     | Display order. Changed with `PUT …/environments/order`; keyboard-accessible move buttons in the UI                                                         |
-| `expectedKeys`  | Variable **names** this environment should define, e.g. from a template. Never values; Phase 3 will use them to show what is missing                       |
+| `expectedKeys`  | Variable **names** this environment should define, e.g. from a template. Never values; the variables table offers missing ones as one click Add buttons    |
 
 ## 2. Lifecycle
 
@@ -95,12 +95,12 @@ Audit actions: `environment.created`, `.duplicated`, `.updated` (with
 
 ## 7. Web routes
 
-| Route                                          | Purpose                                                                                |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `…/projects/{p}/environments`                  | EnvironmentList: search, type and status filters, reorder, create dialog               |
-| `…/projects/{p}/environments/new[?template=…]` | EnvironmentForm with the template prefilled                                            |
-| `…/projects/{p}/environments/{e}`              | Details, EnvironmentSelector, the caller's permissions, and the Phase 3 variables area |
-| `…/projects/{p}/environments/{e}/settings`     | Metadata, protection, access grants and lifecycle                                      |
+| Route                                          | Purpose                                                                                               |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `…/projects/{p}/environments`                  | EnvironmentList: search, type and status filters, reorder, create dialog                              |
+| `…/projects/{p}/environments/new[?template=…]` | EnvironmentForm with the template prefilled                                                           |
+| `…/projects/{p}/environments/{e}`              | Variables table ([secrets.md](secrets.md)), EnvironmentSelector, details and the caller's permissions |
+| `…/projects/{p}/environments/{e}/settings`     | Metadata, protection, access grants and lifecycle                                                     |
 
 The variables area states plainly: "No variables have been configured yet". Secrets
 management arrives in the next phase, and no data is mocked.

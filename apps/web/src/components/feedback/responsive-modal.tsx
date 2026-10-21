@@ -23,6 +23,8 @@ export interface ResponsiveModalProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   className?: string;
+  /** `drawer` opens from the right edge on larger screens (for detail panels). */
+  variant?: 'center' | 'drawer';
 }
 
 /**
@@ -39,11 +41,13 @@ export function ResponsiveModal({
   open,
   onOpenChange,
   className,
+  variant = 'center',
 }: ResponsiveModalProps) {
   return (
     <Dialog {...(open === undefined ? {} : { open })} {...(onOpenChange ? { onOpenChange } : {})}>
       {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
       <DialogContent
+        variant={variant}
         className={className}
         {...(description ? {} : { 'aria-describedby': undefined })}
       >

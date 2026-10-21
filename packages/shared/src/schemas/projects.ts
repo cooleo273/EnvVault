@@ -75,6 +75,7 @@ export const ENVIRONMENT_ROLE_KEYS = [
   'environment-deployer',
   'environment-reader',
   'environment-writer',
+  'environment-exporter',
   'environment-approver',
 ] as const;
 export const environmentRoleKeySchema = z.enum(ENVIRONMENT_ROLE_KEYS);

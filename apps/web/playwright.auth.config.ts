@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { defineConfig, devices } from '@playwright/test';
 
 /**
@@ -18,6 +19,29 @@ const webOrigin = `http://localhost:${String(WEB_PORT)}`;
 const authBaseUrl = `http://localhost:${String(STANDIN_PORT)}/neondb/auth`;
 const databaseUrl = process.env.E2E_DATABASE_URL ?? '';
 
+/**
+ * Throwaway development keyring (format of @envvault/crypto's local
+ * provider) so the API encrypts real values during the run. It exists only in
+ * this process's environment and protects synthetic test values only.
+ */
+const e2eKeyring = Buffer.from(
+  JSON.stringify({
+    format: 'envvault.local-keyring',
+    formatVersion: 1,
+    usage: 'development',
+    keyId: `local-${randomBytes(16).toString('hex')}`,
+    activeVersion: 1,
+    versions: [
+      {
+        version: 1,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        key: randomBytes(32).toString('base64'),
+      },
+    ],
+  }),
+).toString('base64');
+
 export default defineConfig({
   testDir: './e2e-auth',
   fullyParallel: false,
@@ -36,7 +60,7 @@ export default defineConfig({
     { name: 'setup', testMatch: /auth\.setup\.ts/ },
     {
       name: 'auth-flows',
-      testMatch: /(auth-flows|collaboration)\.spec\.ts/,
+      testMatch: /(auth-flows|collaboration|secrets|secret-transfers)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
@@ -69,6 +93,8 @@ export default defineConfig({
         NEON_AUTH_BASE_URL: authBaseUrl,
         AUTH_TRUSTED_ORIGIN: webOrigin,
         RATE_LIMIT_MAX: '10000',
+        ENCRYPTION_PROVIDER: 'local',
+        ENCRYPTION_LOCAL_KEYRING: e2eKeyring,
       },
       reuseExistingServer: false,
       timeout: 60_000,

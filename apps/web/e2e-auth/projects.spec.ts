@@ -50,9 +50,9 @@ test.describe('projects and environments', () => {
     await page.getByRole('button', { name: 'Create environment' }).click();
     await expect(page).toHaveURL(/environments\/[0-9a-f-]{36}\?created=1$/, { timeout: 30_000 });
     const qaUrl = page.url().replace('?created=1', '');
-    await expect(page.getByText('No variables have been configured yet')).toBeVisible();
-    await expect(page.getByText('coming in the next phase', { exact: false })).toBeVisible();
-    await expect(page.getByRole('main').getByText('API_KEY', { exact: true })).toBeVisible();
+    await expect(page.getByText('No variables yet')).toBeVisible();
+    await expect(page.getByText('Expected by the template, not added yet:')).toBeVisible();
+    await expect(page.getByRole('main').getByRole('button', { name: 'API_KEY' })).toBeVisible();
 
     // Duplicate names are rejected.
     await page.goto(`${base}/environments/new`);

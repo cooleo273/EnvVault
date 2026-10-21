@@ -125,10 +125,11 @@ pnpm crypto:status:dev             # versions and statuses only
    `SELECT count(*) FROM secret_versions WHERE kms_key_version = '<v>'`. Retiring
    destroys the material.
 
-**Phase 3A limits:** rotation and re-wrapping are implemented and tested on synthetic
-envelopes only. No job rewrites database rows, and nothing is run against Neon. The
-re-wrap job over `secret_versions` and a retire command with a live reference count come
-with Phase 3B.
+**Current limits:** rotation and rewrapping are implemented and tested on synthetic
+envelopes only. Since Phase 3B, new versions record the active key version in
+`secret_versions.kms_key_version`, so a reference count is a simple query, but no job
+rewrites database rows yet and there is no retire command with a live reference count.
+Both are planned hardening work.
 
 ## 5. Moving to a managed KMS
 

@@ -118,6 +118,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       'secret:write',
       'secret:delete',
       'secret:rollback',
+      'secret:export',
       'service_identity:read',
       'change_request:create',
       'change_request:review',
@@ -172,14 +173,14 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
   {
     key: 'environment-reader',
     name: 'Secret reader',
-    description: 'Reads secret values in this environment (Phase 3).',
+    description: 'Reads secret values in this environment.',
     scope: 'ENVIRONMENT',
     permissions: ['environment:read', 'secret:list', 'secret:read'],
   },
   {
     key: 'environment-writer',
     name: 'Secret writer',
-    description: 'Reads and writes secret values in this environment (Phase 3).',
+    description: 'Reads, writes, deletes and rolls back secret values in this environment.',
     scope: 'ENVIRONMENT',
     permissions: [
       'environment:read',
@@ -187,8 +188,17 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       'secret:read',
       'secret:write',
       'secret:delete',
+      'secret:rollback',
       'change_request:create',
     ],
+  },
+  {
+    key: 'environment-exporter',
+    name: 'Secret exporter',
+    description:
+      'Reads values and downloads them in bulk from this environment. Export is never implied by read access.',
+    scope: 'ENVIRONMENT',
+    permissions: ['environment:read', 'secret:list', 'secret:read', 'secret:export'],
   },
   {
     key: 'environment-approver',

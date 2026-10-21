@@ -4,12 +4,13 @@ A centralized environment variable and secrets management platform for developer
 teams and enterprises: workspaces, projects, unlimited custom environments, and
 encrypted, versioned, audited secrets.
 
-> **Status: Phase 3A (encryption and key management).** Authentication runs on **Neon
+> **Status: Phase 3C (import, export, version history and rollback).** Authentication runs on **Neon
 > Auth**. Workspaces, members and invitations (Phase 1), and projects, custom environments
-> and per-environment access (Phase 2), are implemented. Phase 3A adds envelope encryption
+> and per environment access (Phase 2), are implemented. Phase 3A added envelope encryption
 > (AES-256-GCM, one data key per secret version) with a **self-managed development key
-> provider**. Secret CRUD is not implemented yet (Phase 3B). **Do not store real secrets
-> in EnvVault yet**, and never use the development key provider in production.
+> provider**; Phase 3B stores, versions, reveals and audits environment variables through
+> it, and Phase 3C adds .env import, export, version history with rollback and bulk actions. **Do not store real secrets in EnvVault yet**: keys are still self managed, and the
+> development key provider must never be used in production.
 
 See [docs/architecture.md](docs/architecture.md) for the architecture, trust
 boundaries and encryption design, and [docs/database.md](docs/database.md) for the
@@ -20,6 +21,9 @@ revocation, step-up and the required configuration.
 [docs/projects.md](docs/projects.md), [docs/environments.md](docs/environments.md) and
 [docs/authorization.md](docs/authorization.md) cover projects, environments and the
 workspace → project → environment permission model.
+[docs/secrets.md](docs/secrets.md) covers variables: types, versions, the secrets API,
+reveal rules, .env import syntax, export, history and rollback, bulk actions, rate limits,
+audit events and the dashboard.
 [docs/encryption.md](docs/encryption.md), [docs/key-management.md](docs/key-management.md)
 and [docs/threat-model.md](docs/threat-model.md) cover envelope encryption, local key
 setup and rotation, and the security limitations of self-managed keys. The API's OpenAPI document is served
@@ -192,10 +196,12 @@ git-ignored; only `*.env.example` templates with placeholder values are committe
   common patterns, but review your diffs.
 - The API never logs headers, query strings or request bodies. See
   [Logging policy](docs/architecture.md#44-request-ids-and-logging).
-- Secret storage requires a **managed KMS** (AWS KMS, Google Cloud KMS, Azure Key
-  Vault or HashiCorp Vault Transit). No KMS provider ships yet, and EnvVault deliberately
-  does not include a local or in-memory key store that could be mistaken for production
-  key management.
+- Production secret storage requires a **managed KMS** (AWS KMS, Google Cloud KMS, Azure
+  Key Vault or HashiCorp Vault Transit). No KMS provider ships yet. The only provider today
+  is the self managed development keyring ([key-management.md](docs/key-management.md)),
+  which the API refuses to load with `NODE_ENV=production`.
+- Variable values are encrypted before they reach PostgreSQL, are decrypted only by the
+  audited reveal route, and every secrets response is sent with `Cache-Control: no-store`.
 - EnvVault stores no passwords: credentials and sessions belong to Neon Auth. The
   browser never receives an API token; see [authentication.md](docs/authentication.md).
 - The local Docker setup is for development only.

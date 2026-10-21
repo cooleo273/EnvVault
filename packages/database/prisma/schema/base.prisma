@@ -90,15 +90,23 @@ enum EnvironmentKind {
   OTHER
 }
 
-/// Presentation/validation hint. Every secret value is encrypted regardless of type.
+/// Expected format and presentation of a variable. Every value is encrypted
+/// regardless of type; a type never permits plaintext storage.
 enum SecretType {
-  GENERIC
-  API_KEY
-  PASSWORD
-  CONNECTION_STRING
-  CERTIFICATE
-  PRIVATE_KEY
+  STRING
+  SECRET
+  BOOLEAN
+  NUMBER
   JSON
+  MULTILINE
+}
+
+/// How a secret version was created (history and rollback provenance).
+enum SecretVersionOrigin {
+  CREATE
+  UPDATE
+  IMPORT
+  ROLLBACK
 }
 
 enum EncryptionAlgorithm {

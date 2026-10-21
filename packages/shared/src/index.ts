@@ -9,3 +9,6 @@ export * from './schemas/users.js';
 export * from './schemas/workspaces.js';
 export * from './domain/access.js';
 export * from './schemas/projects.js';
+export * from './domain/secrets.js';
+export * from './schemas/secrets.js';
+export * from './schemas/secret-transfers.js';

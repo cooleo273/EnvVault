@@ -17,6 +17,13 @@ const panelClasses = cn(
   'sm:inset-x-auto sm:bottom-auto sm:top-1/2 sm:left-1/2 sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl',
 );
 
+/** Side drawer from `sm` up (full height, right edge); a bottom sheet below. */
+const drawerClasses = cn(
+  'fixed z-50 flex max-h-[90dvh] flex-col border bg-popover text-popover-foreground shadow-overlay focus:outline-none',
+  'inset-x-0 bottom-0 rounded-t-xl',
+  'sm:inset-y-0 sm:right-0 sm:left-auto sm:max-h-none sm:w-full sm:max-w-xl sm:rounded-none sm:border-y-0 sm:border-r-0',
+);
+
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogClose = DialogPrimitive.Close;
@@ -25,14 +32,18 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  variant = 'center',
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content> & { showCloseButton?: boolean }) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  showCloseButton?: boolean;
+  variant?: 'center' | 'drawer';
+}) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className={overlayClasses} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
-        className={cn(panelClasses, className)}
+        className={cn(variant === 'drawer' ? drawerClasses : panelClasses, className)}
         {...props}
       >
         {children}
