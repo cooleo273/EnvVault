@@ -33,6 +33,7 @@ export async function loadEncryption(env: Env): Promise<EncryptionRuntime> {
         ? { file: env.ENCRYPTION_KEYRING_FILE }
         : { inline: env.ENCRYPTION_LOCAL_KEYRING ?? '' },
       env.NODE_ENV,
+      { acceptSelfManagedProduction: env.ENCRYPTION_SELF_MANAGED_ACKNOWLEDGED },
     );
     return { status: 'ready', provider };
   } catch (error) {

@@ -20,12 +20,10 @@ import {
   type VersionComparison,
 } from '@envvault/shared';
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { AUTH_ROUTES } from '@/config/routes';
-import { messageFor } from '@/features/workspaces/messages';
-import { isApiError, withApi } from '@/lib/api/server-api';
+import { isApiError, withApi, withApiMutation } from '@/lib/api/server-api';
 import { environmentPath } from '@/lib/projects/server';
+import { failure, invalid, type SecretActionResult } from './action-helpers';
 import './messages';
 
 /**
@@ -35,51 +33,7 @@ import './messages';
  * memory only; nothing is logged, cached or stored by the web server.
  */
 
-const SESSION_ENDED = ['UNAUTHENTICATED', 'TOKEN_EXPIRED', 'TOKEN_REVOKED', 'TOKEN_INVALID'];
-
-export type SecretActionResult<T = undefined> =
-  | { ok: true; data: T; message?: string }
-  | { ok: false; code?: string; message: string; fieldErrors?: Record<string, string> };
-
-/** Field the API error code belongs to, so the form can point at it. */
-const FIELD_FOR_CODE: Record<string, string> = {
-  SECRET_IMPORT_TOO_LARGE: 'content',
-  SECRET_KEY_TAKEN: 'key',
-  SECRET_VALUE_REQUIRED: 'value',
-};
-
-function failure(error: unknown): {
-  ok: false;
-  code?: string;
-  message: string;
-  fieldErrors?: Record<string, string>;
-} {
-  if (isApiError(error) && SESSION_ENDED.includes(error.code)) redirect(AUTH_ROUTES.login);
-  if (!isApiError(error)) return { ok: false, message: messageFor(undefined) };
-  const field = FIELD_FOR_CODE[error.code];
-  const message = messageFor(error.code);
-  const issues = error.issues?.filter((issue) => issue.path !== '');
-  return {
-    ok: false,
-    code: error.code,
-    message,
-    ...(field
-      ? { fieldErrors: { [field]: message } }
-      : issues?.length
-        ? {
-            fieldErrors: Object.fromEntries(
-              issues.map((issue) => [issue.path.split('.')[0] ?? 'form', issue.message]),
-            ),
-          }
-        : {}),
-  };
-}
-
-function invalid(error: z.ZodError): SecretActionResult<never> {
-  const fieldErrors: Record<string, string> = {};
-  for (const issue of error.issues) fieldErrors[String(issue.path[0] ?? 'form')] ??= issue.message;
-  return { ok: false, message: 'Please correct the highlighted fields.', fieldErrors };
-}
+export type { SecretActionResult } from './action-helpers';
 
 function refresh(workspaceId: string, projectId: string, environmentId: string): void {
   revalidatePath(environmentPath(workspaceId, projectId, environmentId));
@@ -94,7 +48,7 @@ export async function createSecretAction(
   const parsed = createSecretInputSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   try {
-    const { id } = await withApi((api) =>
+    const { id } = await withApiMutation((api) =>
       api.createSecret(workspaceId, projectId, environmentId, parsed.data),
     );
     refresh(workspaceId, projectId, environmentId);
@@ -114,7 +68,7 @@ export async function updateSecretAction(
   const parsed = updateSecretInputSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   try {
-    const updated = await withApi((api) =>
+    const updated = await withApiMutation((api) =>
       api.updateSecret(workspaceId, projectId, environmentId, secretId, parsed.data),
     );
     refresh(workspaceId, projectId, environmentId);
@@ -134,7 +88,7 @@ export async function deleteSecretAction(
   const revision = z.number().int().min(1).safeParse(expectedRevision);
   if (!revision.success) return invalid(revision.error);
   try {
-    await withApi((api) =>
+    await withApiMutation((api) =>
       api.deleteSecret(workspaceId, projectId, environmentId, secretId, revision.data),
     );
     refresh(workspaceId, projectId, environmentId);
@@ -155,7 +109,7 @@ export async function restoreSecretAction(
   secretId: string,
 ): Promise<SecretActionResult> {
   try {
-    const restored = await withApi((api) =>
+    const restored = await withApiMutation((api) =>
       api.restoreSecret(workspaceId, projectId, environmentId, secretId),
     );
     refresh(workspaceId, projectId, environmentId);
@@ -233,7 +187,7 @@ export async function importAction(
   const parsed = importCommitInputSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   try {
-    const result = await withApi((api) =>
+    const result = await withApiMutation((api) =>
       api.importSecrets(workspaceId, projectId, environmentId, parsed.data),
     );
     refresh(workspaceId, projectId, environmentId);
@@ -302,7 +256,7 @@ export async function bulkAction(
   const parsed = bulkActionInputSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   try {
-    const result = await withApi((api) =>
+    const result = await withApiMutation((api) =>
       api.bulkSecrets(workspaceId, projectId, environmentId, parsed.data),
     );
     refresh(workspaceId, projectId, environmentId);
@@ -384,7 +338,7 @@ export async function rollbackAction(
   const parsed = rollbackInputSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   try {
-    const summary = await withApi((api) =>
+    const summary = await withApiMutation((api) =>
       api.rollbackSecret(workspaceId, projectId, environmentId, secretId, parsed.data),
     );
     refresh(workspaceId, projectId, environmentId);

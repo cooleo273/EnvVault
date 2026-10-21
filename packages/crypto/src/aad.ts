@@ -15,6 +15,8 @@ export const AAD_DOMAINS = {
   dataKeyWrap: 'envvault/data-key-wrap',
   /** Provider self-test during configuration validation. */
   selfTest: 'envvault/key-self-test',
+  /** Encryption of a keyring backup under a recovery key. */
+  keyringBackup: 'envvault/keyring-backup',
 } as const;
 
 export type AadDomain = (typeof AAD_DOMAINS)[keyof typeof AAD_DOMAINS];

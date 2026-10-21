@@ -17,6 +17,7 @@ export interface SecretRecord {
   category: string | null;
   tags: string[];
   isRequired: boolean;
+  inheritable: boolean;
   currentVersionId: string | null;
   currentVersionNumber: number | null;
   revision: number;
@@ -165,6 +166,7 @@ export interface SecretMetadataPatch {
   category?: string | null | undefined;
   tags?: string[] | undefined;
   isRequired?: boolean | undefined;
+  inheritable?: boolean | undefined;
 }
 
 export interface NewSecretData {
@@ -175,6 +177,7 @@ export interface NewSecretData {
   category: string | null;
   tags: string[];
   isRequired: boolean;
+  inheritable?: boolean | undefined;
 }
 
 export type SecretSort = 'name' | 'type' | 'category' | 'created' | 'updated';
@@ -201,6 +204,7 @@ const recordSelect = {
   category: true,
   tags: true,
   isRequired: true,
+  inheritable: true,
   currentVersionId: true,
   revision: true,
   createdAt: true,
@@ -379,6 +383,7 @@ export class SecretRepository {
         category: data.category,
         tags: data.tags,
         isRequired: data.isRequired,
+        inheritable: data.inheritable ?? false,
         latestVersionNumber: version ? 1 : 0,
         currentVersionId: version?.id ?? null,
         createdByUserId: userId,
@@ -414,6 +419,7 @@ export class SecretRepository {
         ...(patch.category === undefined ? {} : { category: patch.category }),
         ...(patch.tags === undefined ? {} : { tags: patch.tags }),
         ...(patch.isRequired === undefined ? {} : { isRequired: patch.isRequired }),
+        ...(patch.inheritable === undefined ? {} : { inheritable: patch.inheritable }),
         ...(version ? { latestVersionNumber: { increment: 1 } } : {}),
         revision: { increment: 1 },
         updatedByUserId: userId,
@@ -496,13 +502,14 @@ export class SecretRepository {
     scope: EnvironmentScope,
     secretId: string,
     versionId: string,
+    options: { includeDeleted?: boolean } = {},
   ): Promise<StoredSecretVersion | null> {
     const row = await this.db.secretVersion.findFirst({
       where: {
         id: versionId,
         secretId,
         workspaceId: scope.workspaceId,
-        secret: { ...scopeWhere(scope), deletedAt: null },
+        secret: { ...scopeWhere(scope), ...(options.includeDeleted ? {} : { deletedAt: null }) },
       },
       select: storedVersionSelect,
     });

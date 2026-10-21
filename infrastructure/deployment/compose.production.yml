@@ -1,0 +1,86 @@
+# Small production topology: one host, TLS at Caddy, web and API containers,
+# Redis for shared rate limits, Neon for PostgreSQL. See docs/deployment.md.
+#
+#   docker compose -f infrastructure/deployment/compose.production.yml --profile migrate run --rm migrate
+#   docker compose -f infrastructure/deployment/compose.production.yml up -d
+#
+# Only Caddy publishes ports. The API and Redis are reachable on the backend
+# network only. Key files live under /srv/envvault/keys on the host
+# (owner 10001, mode 0400) and are mounted read only.
+
+name: envvault
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+  tmpfs: ['/tmp:size=64m,mode=1777']
+  restart: unless-stopped
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN must be set}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL must be set}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge]
+    depends_on: [web]
+
+  web:
+    <<: *hardening
+    image: ${WEB_IMAGE:-envvault-web}
+    env_file: ./env/web.env
+    # Next.js writes its fetch and image cache here; the rest of the filesystem is read only.
+    tmpfs:
+      - '/tmp:size=64m,mode=1777'
+      - '/app/apps/web/.next/cache:size=128m,uid=10001,gid=10001'
+    networks: [edge, backend]
+    depends_on: [api]
+
+  api:
+    <<: *hardening
+    image: ${API_IMAGE:-envvault-api}
+    env_file: ./env/api.env
+    volumes:
+      - /srv/envvault/keys:/run/envvault/keys:ro
+    networks: [backend]
+    depends_on: [redis]
+    stop_grace_period: 30s
+
+  redis:
+    <<: *hardening
+    image: redis:7-alpine
+    # The image's redis user, which owns the password file (mode 0400).
+    user: '999:999'
+    command:
+      [
+        'sh',
+        '-c',
+        'exec redis-server --appendonly no --save "" --requirepass "$$(cat /run/envvault/redis-password)"',
+      ]
+    volumes:
+      - /srv/envvault/redis-password:/run/envvault/redis-password:ro
+    networks: [backend]
+
+  migrate:
+    image: ${MIGRATE_IMAGE:-envvault-api-migrate}
+    env_file: ./env/migrate.env
+    networks: [backend]
+    profiles: [migrate]
+    restart: 'no'
+
+networks:
+  edge:
+  backend:
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -1,4 +1,38 @@
 import {
+  type CompareEnvironmentsInput,
+  type CreateSnapshotInput,
+  type MaintenanceJob,
+  maintenanceJobSchema,
+  type RetentionPolicy,
+  type RetentionPolicyInput,
+  retentionPolicySchema,
+  type RetentionPreview,
+  retentionPreviewSchema,
+  type EffectiveConfiguration,
+  effectiveConfigurationSchema,
+  type EnvironmentComparison,
+  environmentComparisonSchema,
+  type ReadinessInput,
+  type ReadinessReport,
+  readinessReportSchema,
+  type ReplaceValidationRulesInput,
+  type RestorePreview,
+  type RestorePreviewInput,
+  restorePreviewSchema,
+  type RestoreResult,
+  restoreResultSchema,
+  type RestoreSnapshotInput,
+  type SnapshotDetail,
+  snapshotDetailSchema,
+  type SnapshotDiff,
+  type SnapshotDiffInput,
+  snapshotDiffSchema,
+  type SnapshotPage,
+  snapshotPageSchema,
+  type SnapshotSummary,
+  snapshotSummarySchema,
+  type ValidationRule,
+  validationRuleSchema,
   type CreatedSecret,
   createdSecretSchema,
   type CreateSecretInput,
@@ -130,8 +164,11 @@ export class EnvVaultClient {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private readonly getAccessToken: (() => Promise<string | null>) | undefined;
+  private readonly options: EnvVaultClientOptions;
+  private idempotencyKey: string | undefined;
 
   constructor(options: EnvVaultClientOptions) {
+    this.options = options;
     const url = new URL(options.baseUrl);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') {
       throw new Error('baseUrl must use http or https');
@@ -140,6 +177,17 @@ export class EnvVaultClient {
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.timeoutMs = options.timeoutMs ?? 10_000;
     this.getAccessToken = options.getAccessToken;
+  }
+
+  /**
+   * A client that sends `Idempotency-Key: key` with its mutations, so a
+   * retried request (network error, double submit) is answered from the first
+   * one instead of running twice. Use a fresh key per user action.
+   */
+  withIdempotencyKey(key: string): EnvVaultClient {
+    const scoped = new EnvVaultClient(this.options);
+    scoped.idempotencyKey = key;
+    return scoped;
   }
 
   /** Liveness check: `GET /api/v1/health`. */
@@ -902,6 +950,166 @@ export class EnvVaultClient {
     });
   }
 
+  /* --------------------------------------------- Environment intelligence */
+
+  /** Compares two environments of a project (metadata unless `compareValues`). */
+  compareEnvironments(
+    workspaceId: string,
+    projectId: string,
+    input: CompareEnvironmentsInput,
+  ): Promise<EnvironmentComparison> {
+    return this.request(`${projectPath(workspaceId, projectId)}/environments/compare`, {
+      method: 'POST',
+      body: input,
+      schema: environmentComparisonSchema,
+    });
+  }
+
+  effectiveConfiguration(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+  ): Promise<EffectiveConfiguration> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/effective`, {
+      schema: effectiveConfigurationSchema,
+    });
+  }
+
+  setBaseEnvironment(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    baseEnvironmentId: string | null,
+  ): Promise<EffectiveConfiguration> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/inheritance`, {
+      method: 'PUT',
+      body: { baseEnvironmentId },
+      schema: effectiveConfigurationSchema,
+    });
+  }
+
+  validationRules(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+  ): Promise<ValidationRule[]> {
+    return this.request(
+      `${environmentPath(workspaceId, projectId, environmentId)}/validation-rules`,
+      {
+        schema: z.array(validationRuleSchema),
+      },
+    );
+  }
+
+  replaceValidationRules(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: ReplaceValidationRulesInput,
+  ): Promise<ValidationRule[]> {
+    return this.request(
+      `${environmentPath(workspaceId, projectId, environmentId)}/validation-rules`,
+      {
+        method: 'PUT',
+        body: input,
+        schema: z.array(validationRuleSchema),
+      },
+    );
+  }
+
+  evaluateReadiness(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: ReadinessInput = {},
+  ): Promise<ReadinessReport> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/readiness`, {
+      method: 'POST',
+      body: input,
+      schema: readinessReportSchema,
+    });
+  }
+
+  listSnapshots(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    query: { page?: number; pageSize?: number } = {},
+  ): Promise<SnapshotPage> {
+    return this.request(
+      `${environmentPath(workspaceId, projectId, environmentId)}/snapshots${toQuery(query)}`,
+      { schema: snapshotPageSchema },
+    );
+  }
+
+  createSnapshot(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: CreateSnapshotInput = {},
+  ): Promise<SnapshotSummary> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/snapshots`, {
+      method: 'POST',
+      body: input,
+      schema: snapshotSummarySchema,
+    });
+  }
+
+  getSnapshot(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    snapshotId: string,
+  ): Promise<SnapshotDetail> {
+    return this.request(snapshotPath(workspaceId, projectId, environmentId, snapshotId), {
+      schema: snapshotDetailSchema,
+    });
+  }
+
+  snapshotDiff(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    snapshotId: string,
+    input: SnapshotDiffInput = {},
+  ): Promise<SnapshotDiff> {
+    return this.request(`${snapshotPath(workspaceId, projectId, environmentId, snapshotId)}/diff`, {
+      method: 'POST',
+      body: input,
+      schema: snapshotDiffSchema,
+    });
+  }
+
+  previewSnapshotRestore(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    snapshotId: string,
+    input: RestorePreviewInput = {},
+  ): Promise<RestorePreview> {
+    return this.request(
+      `${snapshotPath(workspaceId, projectId, environmentId, snapshotId)}/restore/preview`,
+      { method: 'POST', body: input, schema: restorePreviewSchema },
+    );
+  }
+
+  restoreSnapshot(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    snapshotId: string,
+    input: RestoreSnapshotInput,
+  ): Promise<RestoreResult> {
+    return this.request(
+      `${snapshotPath(workspaceId, projectId, environmentId, snapshotId)}/restore`,
+      {
+        method: 'POST',
+        body: input,
+        schema: restoreResultSchema,
+      },
+    );
+  }
+
   /** After a Neon Auth password change or session revocation: invalidate issued API tokens. */
   async revokeTokens(reason: 'password_changed' | 'sessions_revoked'): Promise<void> {
     await this.request('/auth/tokens/revoke', {
@@ -929,6 +1137,49 @@ export class EnvVaultClient {
     });
   }
 
+  retentionPolicy(workspaceId: string): Promise<RetentionPolicy> {
+    return this.request(`/workspaces/${workspaceId}/retention`, { schema: retentionPolicySchema });
+  }
+
+  updateRetentionPolicy(
+    workspaceId: string,
+    input: RetentionPolicyInput,
+  ): Promise<RetentionPolicy> {
+    return this.request(`/workspaces/${workspaceId}/retention`, {
+      method: 'PUT',
+      body: input,
+      schema: retentionPolicySchema,
+    });
+  }
+
+  previewRetention(workspaceId: string): Promise<RetentionPreview> {
+    return this.request(`/workspaces/${workspaceId}/retention/preview`, {
+      method: 'POST',
+      schema: retentionPreviewSchema,
+    });
+  }
+
+  /** Queues a purge. Needs workspace:delete, a recent step up and the slug as confirmation. */
+  startRetentionRun(workspaceId: string, confirm: string): Promise<MaintenanceJob> {
+    return this.request(`/workspaces/${workspaceId}/retention/runs`, {
+      method: 'POST',
+      body: { confirm },
+      schema: maintenanceJobSchema,
+    });
+  }
+
+  retentionRuns(workspaceId: string): Promise<{ items: MaintenanceJob[] }> {
+    return this.request(`/workspaces/${workspaceId}/retention/runs`, {
+      schema: z.object({ items: z.array(maintenanceJobSchema) }),
+    });
+  }
+
+  retentionRun(workspaceId: string, jobId: string): Promise<MaintenanceJob> {
+    return this.request(`/workspaces/${workspaceId}/retention/runs/${jobId}`, {
+      schema: maintenanceJobSchema,
+    });
+  }
+
   private async request<T>(path: string, options: RequestOptions<T>): Promise<T> {
     const headers: Record<string, string> = { accept: 'application/json' };
     if (options.authenticated !== false) {
@@ -943,6 +1194,9 @@ export class EnvVaultClient {
       headers.authorization = `Bearer ${token}`;
     }
     if (options.body !== undefined) headers['content-type'] = 'application/json';
+    if (this.idempotencyKey && options.method && options.method !== 'GET') {
+      headers['idempotency-key'] = this.idempotencyKey;
+    }
 
     const response = await this.fetchImpl(`${this.baseUrl}${API_BASE_PATH}${path}`, {
       method: options.method ?? 'GET',
@@ -1009,6 +1263,15 @@ function secretPath(
   secretId: string,
 ): string {
   return `${secretsPath(workspaceId, projectId, environmentId)}/${encodeURIComponent(secretId)}`;
+}
+
+function snapshotPath(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  snapshotId: string,
+): string {
+  return `${environmentPath(workspaceId, projectId, environmentId)}/snapshots/${encodeURIComponent(snapshotId)}`;
 }
 
 function workspacePath(workspaceId: string): string {

@@ -1,0 +1,93 @@
+/// MAC chain over audit events, one chain per workspace (plus `platform`).
+/// The MAC key lives outside the database (INTEGRITY_KEY_FILE).
+model AuditSeal {
+  chainId  String   @map("chain_id") @db.VarChar(36)
+  seq      BigInt
+  eventId  String   @unique @map("event_id") @db.Uuid
+  keyId    String   @map("key_id") @db.VarChar(32)
+  mac      Bytes
+  sealedAt DateTime @default(now()) @map("sealed_at") @db.Timestamptz(3)
+
+  event AuditEvent @relation(fields: [eventId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "audit_seals_event_fkey")
+
+  @@id([chainId, seq])
+  @@map("audit_seals")
+}
+
+/// Last seal removed by a retention purge; verification restarts from it.
+model AuditSealCheckpoint {
+  chainId   String   @map("chain_id") @db.VarChar(36)
+  seq       BigInt
+  keyId     String   @map("key_id") @db.VarChar(32)
+  mac       Bytes
+  reason    String   @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([chainId, seq])
+  @@map("audit_seal_checkpoints")
+}
+
+/// Per workspace retention. Null means keep forever.
+model RetentionPolicy {
+  workspaceId       String   @id @map("workspace_id") @db.Uuid
+  deletedSecretDays Int?     @map("deleted_secret_days")
+  versionKeepCount  Int?     @map("version_keep_count")
+  versionMinAgeDays Int?     @map("version_min_age_days")
+  snapshotDays      Int?     @map("snapshot_days")
+  auditDays         Int?     @map("audit_days")
+  includeProtected  Boolean  @default(false) @map("include_protected")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedByUserId   String?  @map("updated_by_user_id") @db.Uuid
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "retention_policies_workspace_fkey")
+  updatedBy User?     @relation("RetentionPolicyUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull, map: "retention_policies_updated_by_user_id_fkey")
+
+  @@map("retention_policies")
+}
+
+/// Background work requested through the API (currently retention purges).
+model MaintenanceJob {
+  id                String    @id @default(uuid(7)) @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  kind              String    @db.VarChar(32)
+  status            String    @default("queued") @db.VarChar(16)
+  requestedByUserId String?   @map("requested_by_user_id") @db.Uuid
+  parameters        Json      @default("{}") @db.JsonB
+  progress          Json      @default("{}") @db.JsonB
+  errorCode         String?   @map("error_code") @db.VarChar(64)
+  attempts          Int       @default(0)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  startedAt         DateTime? @map("started_at") @db.Timestamptz(3)
+  heartbeatAt       DateTime? @map("heartbeat_at") @db.Timestamptz(3)
+  finishedAt        DateTime? @map("finished_at") @db.Timestamptz(3)
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "maintenance_jobs_workspace_fkey")
+  requestedBy User?     @relation("MaintenanceJobRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull, map: "maintenance_jobs_requested_by_user_id_fkey")
+
+  @@index([status, createdAt])
+  @@map("maintenance_jobs")
+}
+
+/// Replay protection for retried mutations. Holds metadata responses only;
+/// routes that return values are never idempotent stored.
+model IdempotencyRecord {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  idempotencyKey String   @map("idempotency_key") @db.VarChar(128)
+  method         String   @db.VarChar(8)
+  route          String   @db.VarChar(300)
+  /// Keyed HMAC of the request (never a plain hash: bodies can hold values).
+  fingerprint    Bytes
+  keyId          String   @map("key_id") @db.VarChar(32)
+  status         String   @default("pending") @db.VarChar(16)
+  responseStatus Int?     @map("response_status")
+  responseBody   Json?    @map("response_body") @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "idempotency_records_user_fkey")
+
+  @@unique([userId, idempotencyKey], map: "idempotency_records_user_key_key")
+  @@index([expiresAt])
+  @@map("idempotency_records")
+}

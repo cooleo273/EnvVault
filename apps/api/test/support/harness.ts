@@ -44,6 +44,9 @@ export class Harness {
       NEON_AUTH_BASE_URL: neon.baseUrl,
       RATE_LIMIT_MAX: '10000',
       RATE_LIMIT_SENSITIVE_MAX: '10000',
+      // Background workers would race the tests; tests run jobs explicitly.
+      MAINTENANCE_POLL_SECONDS: '0',
+      AUDIT_SEAL_INTERVAL_SECONDS: '0',
       ...envOverrides,
     });
     const moduleRef = await Test.createTestingModule({

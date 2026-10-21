@@ -129,6 +129,17 @@ src/
                           SecretsController (CRUD, reveal, history, rollback), SecretVault
                           (the only path to the cipher), SecretAuthorizationService,
                           SecretRateLimiter and one service per concern
+  intelligence/           IntelligenceModule: environment comparison, effective configuration
+                          and inheritance, validation rules, readiness, snapshots, drift and
+                          restore; reuses SecretVault, SecretAuthorizationService and
+                          SecretRateLimiter, so every plaintext read follows the same rules
+  rate-limit/             RateLimitModule: Redis or memory storage, per user guard,
+                          SensitiveRateLimiter and the route level SensitiveActionGuard
+  integrity/              Integrity keys (audit seals, idempotency) and the audit sealer
+  audit/                  Seal encoding, sealing passes and chain verification
+  idempotency/            IdempotencyInterceptor (`@Idempotent()` on mutations)
+  retention/              Retention policies, purge runs and the maintenance worker
+  ops/                    Operator CLI (`pnpm ops`): keys, keyring backups, audit
 ```
 
 New domains (workspaces, projects, environments, secrets) are added as feature modules
@@ -199,20 +210,31 @@ environments should inject configuration through the platform's secret mechanism
 
 ### 4.6 Health checks
 
-| Endpoint                   | Purpose   | Behaviour                                                                    |
-| -------------------------- | --------- | ---------------------------------------------------------------------------- |
-| `GET /api/v1/health`       | Liveness  | Always 200 while the process serves requests; no dependency checks           |
-| `GET /api/v1/health/ready` | Readiness | `SELECT 1` against PostgreSQL with a 2 s timeout; 503 + `down` when it fails |
+| Endpoint                   | Purpose   | Behaviour                                                                                                                    |
+| -------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/health`       | Liveness  | Always 200 while the process serves requests; no dependency checks                                                           |
+| `GET /api/v1/health/ready` | Readiness | Database reachable and migrated (2 s timeout), configured keys usable; also reports the rate limit store; 503 when not ready |
 
 The Prisma client connects lazily, so the API can start (and report liveness) before
 the database is reachable. Readiness never exposes connection error details.
 
 ### 4.7 Rate limiting
 
-`@nestjs/throttler` runs globally with **in-memory storage**, which is correct for a
-single instance only. Running multiple replicas requires a shared Redis-backed store.
-That is why Redis is already part of the local infrastructure. Set `TRUST_PROXY=true`
-only behind a trusted proxy, so that client IPs are derived correctly.
+Three layers ([security-hardening.md, section 5](security-hardening.md#5-controls-added-or-verified)):
+a coarse per address limit before authentication (`@nestjs/throttler`), a per user limit
+after it, and per user limits on sensitive actions after authorization. Counters are per
+instance (`RATE_LIMIT_STORE=memory`) or shared in Redis (`RATE_LIMIT_STORE=redis`, required
+for more than one instance). If Redis fails, general limits fall back to per instance
+counting and sensitive actions are refused. Set `TRUST_PROXY=true` only behind a trusted
+proxy, so that client addresses are derived correctly.
+
+### 4.8 Background work and operator tooling
+
+The API process also runs the audit sealer (every `AUDIT_SEAL_INTERVAL_SECONDS`) and the
+maintenance worker (retention jobs, expired idempotency records). Both stop on shutdown and
+can be turned off with 0. Operator commands (`apps/api/src/ops`, run with `pnpm ops`) cover
+key rotation, rewrap, retirement, keyring backup and restore, and audit sealing and
+verification; they read the same configuration as the API.
 
 ## 5. Web (apps/web)
 
@@ -377,7 +399,12 @@ developer's real database.
 
 - Authentication, workspaces, projects, environments, templates, project roles,
   environment access grants and secrets CRUD with encrypted versions are implemented.
-  Phase 3C adds .env import, export, version history, rollback and bulk operations.
+  Phase 3C adds .env import, export, version history, rollback and bulk operations. Phase 3D
+  adds environment comparison, one level configuration inheritance, validation rules with
+  readiness checks, and snapshots with drift and restore. Phase 3E adds key rotation tooling,
+  keyring backups, retention, shared rate limits, audit seals, idempotency and deployment
+  configuration; see [security-hardening.md](security-hardening.md) for what remains.
+- Readiness is evaluated on request; snapshots are manual (no schedules or retention).
 - Protected-environment approvals are modelled (`required_approvals`, change request
   tables) but not enforced; no approval workflow runs yet.
 - The OpenAPI route table is registered by hand next to the controllers (kept honest by a
@@ -388,17 +415,15 @@ developer's real database.
 - See [authentication.md §9](authentication.md#9-limitations-and-open-items) for
   authentication-specific limitations (beta SDK; password reset does not revoke tokens
   that were already issued).
-- Only the self-managed local key provider exists (development and test); production
-  requires a managed KMS provider. Values must stay synthetic until then.
-- Encrypted versions are kept indefinitely; purge and retention policies are not
-  implemented.
-- Per user rate limits on plaintext reads use the throttler's in memory storage: each API
-  instance counts separately until a shared store (Redis) is configured.
-- The browser only Playwright suite runs the production build over plain http, where the
-  production CSP (`upgrade-insecure-requests`) makes the browser upgrade a prefetch redirect
-  to https; the landing page test then sees `ERR_SSL_PROTOCOL_ERROR`. This affects the test
-  setup only, not https deployments.
-- Rate limiting is per instance (in-memory).
-- Redis is provisioned locally but not used by the API yet.
-- No production deployment manifests yet (`infrastructure/deployment`).
-- Web CSP allows inline scripts until nonce-based CSP is introduced.
+- Only the local key provider exists. Production accepts an explicitly acknowledged self
+  managed keyring on the API host; a managed KMS provider is still required for real
+  secrets (see [security-hardening.md, section 10](security-hardening.md#10-remaining-risks-and-production-blockers)).
+- Retention purges are logical deletion; copies remain in Neon history and backups.
+- Rate limits are per instance unless `RATE_LIMIT_STORE=redis`; the Redis store was tested
+  against an in process emulator, not a Redis server.
+- The landing page Playwright test failed in Phase 3D with `ERR_SSL_PROTOCOL_ERROR` (the
+  production CSP's `upgrade-insecure-requests` over a plain http test server was the
+  suspected cause). It passed in every Phase 3E run without a deliberate fix, so the cause is
+  unconfirmed and the failure may come back.
+- The deployment configuration in `infrastructure/deployment` has not been built or run.
+- Web CSP allows inline scripts until a nonce based CSP is introduced.

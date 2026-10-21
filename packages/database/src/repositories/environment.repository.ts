@@ -19,6 +19,7 @@ export interface EnvironmentRecord {
   status: EnvironmentStatus;
   archivedAt: Date | null;
   expectedKeys: { key: string; description?: string | undefined }[];
+  baseEnvironmentId: string | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: { displayName: string | null; email: string } | null;
@@ -44,6 +45,7 @@ const recordSelect = {
   status: true,
   archivedAt: true,
   expectedKeys: true,
+  baseEnvironmentId: true,
   createdAt: true,
   updatedAt: true,
   createdBy: { select: { displayName: true, email: true } },
@@ -319,6 +321,70 @@ export class EnvironmentRepository {
       ),
     );
     return true;
+  }
+
+  /**
+   * Any environment of the project by id, including archived and deleted ones
+   * (inheritance needs to report a broken base, not hide it).
+   */
+  async inProject(
+    scope: ProjectScope,
+    environmentId: string,
+  ): Promise<{
+    id: string;
+    name: string;
+    slug: string;
+    status: EnvironmentStatus;
+    isProtected: boolean;
+    deleted: boolean;
+    baseEnvironmentId: string | null;
+  } | null> {
+    const row = await this.db.environment.findFirst({
+      where: { id: environmentId, projectId: scope.projectId, workspaceId: scope.workspaceId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        status: true,
+        isProtected: true,
+        deletedAt: true,
+        baseEnvironmentId: true,
+      },
+    });
+    if (!row) return null;
+    const { deletedAt, ...rest } = row;
+    return { ...rest, deleted: deletedAt !== null };
+  }
+
+  /** Live environments that use this one as their base. */
+  inheritors(scope: EnvironmentScope): Promise<{ id: string; name: string }[]> {
+    return this.db.environment.findMany({
+      where: {
+        workspaceId: scope.workspaceId,
+        projectId: scope.projectId,
+        baseEnvironmentId: scope.environmentId,
+        deletedAt: null,
+      },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  /**
+   * Sets or clears the base environment. Serialised per project with an
+   * advisory lock so two concurrent changes cannot form a cycle; the trigger
+   * `environments_inheritance` enforces one level. Run in a transaction.
+   */
+  async setBase(scope: EnvironmentScope, baseEnvironmentId: string | null): Promise<boolean> {
+    await this.db.$queryRaw`
+      SELECT 1 AS "locked" FROM (
+        SELECT pg_advisory_xact_lock(hashtextextended(${`environment-inheritance:${scope.projectId}`}, 0))
+      ) AS "lock"`;
+    const result = await this.db.environment.updateMany({
+      where: this.activeWhere(scope),
+      data: { baseEnvironmentId },
+    });
+    return result.count === 1;
   }
 
   private activeWhere(scope: EnvironmentScope): Prisma.EnvironmentWhereInput {

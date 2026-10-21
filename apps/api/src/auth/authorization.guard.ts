@@ -2,6 +2,7 @@ import {
   type CanActivate,
   type ExecutionContext,
   HttpStatus,
+  Inject,
   Injectable,
   Logger,
 } from '@nestjs/common';
@@ -22,6 +23,8 @@ import {
   WORKSPACE_ERROR_CODES,
 } from '@envvault/shared';
 import { ApiException } from '../common/api-exception.js';
+import type { ResilientThrottlerStorage } from '../rate-limit/resilient.storage.js';
+import { RATE_LIMIT_STORAGE } from '../rate-limit/sensitive-rate-limiter.js';
 import { DatabaseService } from '../database/database.service.js';
 import {
   ALLOW_ARCHIVED_KEY,
@@ -78,9 +81,56 @@ export class AuthorizationGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly database: DatabaseService,
+    @Inject(RATE_LIMIT_STORAGE) private readonly storage: ResilientThrottlerStorage,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    try {
+      return await this.authorize(context);
+    } catch (error) {
+      if (error instanceof ApiException && error.code === AUTH_ERROR_CODES.FORBIDDEN) {
+        await this.recordRefusal(context.switchToHttp().getRequest<AuthenticatedRequest>());
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Audits a refused request of a workspace member (403 only happens after
+   * the membership was found, so the workspace id is trustworthy here). One
+   * event per user, route and minute, so retries cannot flood the log.
+   */
+  private async recordRefusal(request: AuthenticatedRequest): Promise<void> {
+    const principal = request.principal;
+    const workspaceId = request.params.workspaceId;
+    if (!principal || typeof workspaceId !== 'string') return;
+    // The route pattern (not the concrete path) keeps one entry per endpoint.
+    const pattern = (request.route as { path?: unknown } | undefined)?.path;
+    const route = `${request.method} ${typeof pattern === 'string' ? pattern : request.path}`;
+    try {
+      const marker = await this.storage.increment(
+        `authz-denied:${principal.userId}:${route}`,
+        60_000,
+        1,
+        0,
+        'audit-dedupe',
+      );
+      if (marker.isBlocked) return;
+      await createRepositories(this.database.client).audit.append({
+        workspaceId,
+        actorUserId: principal.userId,
+        action: 'authz.denied',
+        outcome: 'DENIED',
+        resourceType: 'route',
+        requestId: typeof request.id === 'string' ? request.id : null,
+        metadata: { route },
+      });
+    } catch {
+      this.logger.error('Could not record a refused request');
+    }
+  }
+
+  private async authorize(context: ExecutionContext): Promise<boolean> {
     const targets = [context.getHandler(), context.getClass()];
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, targets)) {
       return true;

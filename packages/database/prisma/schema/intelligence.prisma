@@ -1,0 +1,93 @@
+/// Validation rule for one variable name in one environment, or, with the
+/// key `*`, a naming rule for every variable of the environment.
+model ConfigurationValidationRule {
+  id              String      @id @default(uuid(7)) @db.Uuid
+  workspaceId     String      @map("workspace_id") @db.Uuid
+  projectId       String      @map("project_id") @db.Uuid
+  environmentId   String      @map("environment_id") @db.Uuid
+  /// Variable name, or `*` for the environment's naming rule.
+  key             String      @db.VarChar(256)
+  /// The variable must exist (locally or inherited).
+  required        Boolean     @default(false)
+  /// An empty value is acceptable.
+  allowEmpty      Boolean     @default(true) @map("allow_empty")
+  format          ValueFormat @default(ANY)
+  minNumber       Decimal?    @map("min_number") @db.Decimal(38, 10)
+  maxNumber       Decimal?    @map("max_number") @db.Decimal(38, 10)
+  minLength       Int?        @map("min_length")
+  maxLength       Int?        @map("max_length")
+  /// Restricted regular expression (validated for safety by the API).
+  pattern         String?     @db.VarChar(200)
+  allowedValues   String[]    @default([]) @map("allowed_values")
+  description     String?     @db.VarChar(500)
+  createdByUserId String      @map("created_by_user_id") @db.Uuid
+  updatedByUserId String      @map("updated_by_user_id") @db.Uuid
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  environment   Environment @relation(fields: [workspaceId, projectId, environmentId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "configuration_validation_rules_environment_fkey")
+  createdByUser User        @relation("ValidationRuleCreatedBy", fields: [createdByUserId], references: [id], onDelete: NoAction)
+  updatedByUser User        @relation("ValidationRuleUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: NoAction)
+
+  @@unique([environmentId, key])
+  @@index([workspaceId, projectId])
+  @@map("configuration_validation_rules")
+}
+
+/// Immutable record of an environment's variables at a point in time: secret
+/// ids, exact version references and metadata. Never values or ciphertext.
+model EnvironmentSnapshot {
+  id                String                    @id @default(uuid(7)) @db.Uuid
+  workspaceId       String                    @map("workspace_id") @db.Uuid
+  projectId         String                    @map("project_id") @db.Uuid
+  environmentId     String                    @map("environment_id") @db.Uuid
+  description       String?                   @db.VarChar(500)
+  status            EnvironmentSnapshotStatus @default(COMPLETE)
+  /// Version of the entry format, for future migrations of snapshot data.
+  schemaVersion     Int                       @default(1) @map("schema_version")
+  entryCount        Int                       @map("entry_count")
+  /// The environment's base at capture time (informational; not a reference).
+  baseEnvironmentId String?                   @map("base_environment_id") @db.Uuid
+  createdByUserId   String                    @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  environment   Environment                @relation(fields: [workspaceId, projectId, environmentId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "environment_snapshots_environment_fkey")
+  createdByUser User                       @relation(fields: [createdByUserId], references: [id], onDelete: NoAction)
+  entries       EnvironmentSnapshotEntry[]
+
+  @@unique([workspaceId, id])
+  @@unique([id, environmentId])
+  @@index([environmentId, createdAt(sort: Desc)])
+  @@index([workspaceId, createdAt], map: "environment_snapshots_created_at_idx")
+  @@map("environment_snapshots")
+}
+
+/// One variable in a snapshot. The version reference must belong to the
+/// secret, and the secret to the snapshot's environment (composite keys).
+model EnvironmentSnapshotEntry {
+  id              String     @id @default(uuid(7)) @db.Uuid
+  workspaceId     String     @map("workspace_id") @db.Uuid
+  snapshotId      String     @map("snapshot_id") @db.Uuid
+  environmentId   String     @map("environment_id") @db.Uuid
+  secretId        String     @map("secret_id") @db.Uuid
+  /// Null when the variable had no value.
+  secretVersionId String?    @map("secret_version_id") @db.Uuid
+  versionNumber   Int?       @map("version_number")
+  key             String     @db.VarChar(256)
+  type            SecretType
+  category        String?    @db.VarChar(64)
+  tags            String[]   @default([])
+  isRequired      Boolean    @map("is_required")
+  inheritable     Boolean
+  description     String?    @db.VarChar(1000)
+
+  snapshot      EnvironmentSnapshot @relation(fields: [snapshotId, environmentId], references: [id, environmentId], onDelete: Cascade, map: "environment_snapshot_entries_snapshot_fkey")
+  secret        Secret              @relation(fields: [environmentId, secretId], references: [environmentId, id], onDelete: NoAction, map: "environment_snapshot_entries_secret_fkey")
+  secretVersion SecretVersion?      @relation(fields: [secretId, secretVersionId], references: [secretId, id], onDelete: NoAction, onUpdate: NoAction, map: "environment_snapshot_entries_version_fkey")
+
+  @@unique([snapshotId, secretId])
+  @@unique([snapshotId, key])
+  @@index([secretId])
+  @@index([secretVersionId])
+  @@map("environment_snapshot_entries")
+}

@@ -4,13 +4,13 @@ Key encryption keys (KEKs) are held by a **key provider**. Business code depends
 the `KeyManagementProvider` interface (`packages/crypto/src/provider.ts`), so a managed
 KMS can replace the local provider without changing callers.
 
-> **The local provider is self-managed and for development and testing only.** Its master
-> keys live in a file (or an environment variable) and in the API process's memory. That
-> is **not** equivalent to a managed or hardware-backed KMS (AWS KMS, Google Cloud KMS,
-> Azure Key Vault, HashiCorp Vault Transit): there is no HSM, no access policy, no
-> independent audit trail of key use, and anyone who can read the file or the process's
-> memory has the keys. The API refuses `ENCRYPTION_PROVIDER=local` with
-> `NODE_ENV=production`.
+> **The local provider keeps keys on the API host.** Its master keys live in a file (or, in
+> development, an environment variable) and in the API process's memory. That is **not**
+> equivalent to a managed or hardware backed KMS (AWS KMS, Google Cloud KMS, Azure Key Vault,
+> HashiCorp Vault Transit): there is no HSM, no access policy, no independent audit trail of
+> key use, and anyone who can read the file or the process's memory has the keys.
+> Development keyrings are refused in production; production accepts only an explicitly
+> acknowledged self managed keyring (section 7).
 
 ## 1. Provider interface
 
@@ -101,35 +101,36 @@ pnpm crypto:status:dev             # versions and statuses only
   stops start-up with `Invalid encryption configuration: …`, distinct from other
   start-up errors.
 
-## 4. Rotation
+## 4. Rotation, rewrapping and retirement
 
-1. `pnpm crypto:rotate:dev` adds version _n+1_ as `active`. The previous active version
-   becomes `decrypt-only`. The file is written atomically (temporary file, fsync,
-   rename), so a crash leaves the old or the new keyring, never a partial one. The
-   provider persists before using a new key.
-2. Restart the API. New secret versions now use version _n+1_. Existing envelopes still
-   decrypt with their own version.
-3. **Re-wrap (optional, later)** with `rewrapAll(cipher, items, { store })` from
-   `@envvault/crypto`:
-   - It unwraps each DEK with its old version, checks it against the value ciphertext
-     with the same context, and wraps it under the active version.
-   - `ciphertext`, `iv` and `auth_tag` never change.
-   - It is idempotent: items already on the active version are skipped. A rerun resumes
-     an interrupted rotation.
-   - Progress and failures are reported by record id and error code only, never values.
-   - The `store` callback should update conditionally (compare-and-set on the old key
-     version).
-4. **Retire** an old version with `retireKeyVersion(keyring, version, liveReferences)`.
-   It refuses while any live envelope still references the version, and refuses the
-   active version. The caller must count references, e.g.
-   `SELECT count(*) FROM secret_versions WHERE kms_key_version = '<v>'`. Retiring
-   destroys the material.
+Development keyrings rotate with `pnpm crypto:rotate:dev`. The operator tool `pnpm ops`
+(Phase 3E) handles the whole lifecycle against the database and works for both keyring
+usages; [operational-runbook.md, section 2](operational-runbook.md#2-key-rotation) has the
+procedure.
 
-**Current limits:** rotation and rewrapping are implemented and tested on synthetic
-envelopes only. Since Phase 3B, new versions record the active key version in
-`secret_versions.kms_key_version`, so a reference count is a simple query, but no job
-rewrites database rows yet and there is no retire command with a live reference count.
-Both are planned hardening work.
+| Command                                                                                 | What it does                                                                                                                       |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `keys:status`                                                                           | Key versions, how many secret versions reference each, versions that can be retired, data the keyring cannot decrypt               |
+| `keys:rotate --confirm <key id>`                                                        | Adds version n+1 as `active`; n becomes `decrypt-only`. Written atomically (temporary file, fsync, rename) before anything uses it |
+| `keys:rewrap [--dry-run]`                                                               | Moves data keys still on older versions onto the active one                                                                        |
+| `keys:verify [--key-version n]`                                                         | Authenticates stored envelopes without producing values                                                                            |
+| `keys:retire --version n --backup <file> --recovery-key-file <file> --confirm <key id>` | Destroys the material of an unreferenced `decrypt-only` version                                                                    |
+
+**Rewrap.** Each row is unwrapped with its own version, checked against its ciphertext with the
+same context, wrapped under the active version and stored with a compare and set update
+(`id`, old key version and old wrapped key must still match). Only `encrypted_data_key`,
+`kms_key_version` and `rewrapped_at` change; the immutability trigger keeps every other column,
+including the ciphertext, unchanged. A crash leaves each row old or new, never half written;
+a rerun continues where the last one stopped (rows on the active version are skipped).
+`--dry-run` reports counts only. Runs are recorded as `encryption.rewrap_started` and
+`encryption.rewrap_completed` or `encryption.rewrap_interrupted`, with counts and the ids of
+failed rows.
+
+**Retirement** refuses the active version, any version still referenced by a secret version,
+any retirement while change request values (envelopes without a recorded key version) exist,
+and any retirement without a backup that opens with the recovery key and holds the same
+material for that version. That backup is what restores database backups taken before the
+rewrap. Old versions are never deleted silently.
 
 ## 5. Moving to a managed KMS
 
@@ -143,3 +144,53 @@ Then extend `ENCRYPTION_PROVIDER` and `loadEncryption()`. Envelopes record `prov
 `keyId` and `keyVersion`, so data encrypted under the local provider can be migrated by
 re-wrapping each DEK: unwrap with the local provider, wrap with the KMS. A production
 deployment needs that reviewed provider. The local provider must not be used.
+
+## 6. Keyring backup and recovery
+
+A keyring backup is the keyring encrypted with AES-256-GCM under a subkey derived (HKDF-SHA256,
+random salt per backup) from a **recovery key**: 256 random bits created by
+`pnpm ops keyring:recovery-key`, stored offline and never with the backups, the keyring, Git
+or the database.
+
+| Command                                                                                 | What it does                                                                             |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `keyring:recovery-key --out <file>`                                                     | New recovery key file (mode 0600, never overwrites); prints its id only                  |
+| `keyring:backup --recovery-key-file <file> --out <file>`                                | New versioned backup (id, time, key id, versions), opened again before it is written     |
+| `keyring:verify-backup --backup <file> --recovery-key-file <file> [--against-database]` | Integrity check, and coverage of every key version the database uses                     |
+| `keyring:restore --backup <file> --recovery-key-file <file> --to <file>`                | Restores into a new file; replacing an existing keyring needs `--overwrite <its key id>` |
+
+The readable header (key id, usage, versions, recovery key id, salt) is authenticated as
+associated data: editing it, the ciphertext or the tag makes the restore fail. A wrong
+recovery key fails the same way. Plaintext keyrings are never exported. Scenarios and the
+drill are in [disaster-recovery.md](disaster-recovery.md).
+
+## 7. Self managed keys in production
+
+`pnpm ops keys:init --usage self-managed --out <file>` creates a keyring with usage
+`self-managed`. The API accepts it only when `NODE_ENV=production`,
+`ENCRYPTION_SELF_MANAGED_ACKNOWLEDGED=true` and it is loaded from a file (an inline keyring is
+refused in production). Outside production a self managed keyring is refused, so production
+keys are not used on developer machines by accident.
+
+What this deployment mode does **not** protect against: compromise of the API host or
+process (the keys are in the same place as the code that uses them), an operator with access
+to the key file, loss of the keyring together with every backup, and the absence of an
+independent record of key use. It exists so a small installation can run; the target is a
+managed KMS provider (section 5).
+
+`ENCRYPTION_SELF_MANAGED_ACKNOWLEDGED` is **false by default** and is a configuration switch,
+not evidence that a deployment is safe: setting it records that the operator accepts the
+risks above, nothing more. Before setting it, a deployment must meet at least these
+requirements:
+
+1. The host runs only EnvVault, is patched, and allows administrative access (SSH) to named
+   operators only, with keys, not passwords.
+2. The keyring and integrity key are files outside the image and the repository, mode 0400,
+   owned by the service user, mounted read only into the API container; nothing else mounts
+   them.
+3. The disk holding them is encrypted, and host backups that include it are treated as
+   secrets.
+4. A recovery key exists offline and a verified keyring backup is stored apart from it.
+5. Production has its own Neon branch, Neon Auth URL, keyring, integrity key and recovery key.
+6. Operator commands (`pnpm ops`) are run only by those operators, and their use is logged.
+7. Real secrets are stored only after an independent security assessment of the deployment.

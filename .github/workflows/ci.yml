@@ -50,6 +50,37 @@ jobs:
       - name: Build
         run: pnpm build
 
+  security:
+    name: Secret scanning & dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history, so secrets removed in a later commit are still found.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Scan tracked files for key material and credentials
+        run: pnpm scan:secrets
+
+      - name: Scan the Git history (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Dependency audit (fails on high and critical)
+        run: pnpm audit:deps
+
   database:
     name: Database migrations, seed & integration tests
     runs-on: ubuntu-latest

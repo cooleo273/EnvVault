@@ -8,3 +8,16 @@ allowBuilds:
   # Only prints a funding banner; not needed.
   core-js: false
   prisma: true
+
+# Security fixes in transitive dependencies, each reviewed (docs/security-hardening.md, section 8).
+overrides:
+  # Pulled in by the Prisma CLI inside Neon Auth's adapter; EnvVault never loads it.
+  mysql2: 3.24.5
+  # Prisma's config loader (GHSA-ggr8-5vv4-36mx). Prisma 7.10.1 ships this same version.
+  deepmerge-ts: 8.0.2
+
+# Reviewed 2026-10-21; revisit when fixes ship. CI fails on any other high or critical advisory.
+auditConfig:
+  ignoreGhsas:
+    # braces in the ESLint Next.js plugin (lint time only). No patched release exists yet.
+    - GHSA-vfj7-8cjw-p6xm

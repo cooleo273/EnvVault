@@ -1,11 +1,20 @@
 import type { DatabaseHealth } from '@envvault/database';
 import { healthResponseSchema, readinessResponseSchema } from '@envvault/shared';
 import { describe, expect, it, vi } from 'vitest';
+import type { Redis } from 'ioredis';
 import type { DatabaseService } from '../database/database.service.js';
+import type { KeyManagementService } from '../encryption/key-management.service.js';
 import { HealthService, SERVICE_NAME } from './health.service.js';
 
-function createService(health: () => Promise<DatabaseHealth>): HealthService {
-  return new HealthService({ health } as unknown as DatabaseService);
+function createService(
+  health: () => Promise<DatabaseHealth>,
+  options: { keys?: KeyManagementService; redis?: Redis | null } = {},
+): HealthService {
+  return new HealthService(
+    { health } as unknown as DatabaseService,
+    options.keys ?? ({ isConfigured: false } as unknown as KeyManagementService),
+    options.redis ?? null,
+  );
 }
 
 describe('HealthService', () => {
@@ -47,5 +56,18 @@ describe('HealthService', () => {
 
     expect(result.checks.database).toEqual({ status: 'down' });
     expect(JSON.stringify(result)).not.toContain('secret');
+  });
+
+  it('fails readiness when configured keys are unusable, and only reports the rate limit store', async () => {
+    const up = () => Promise.resolve({ status: 'up' as const, latencyMs: 1 });
+    const broken = {
+      isConfigured: true,
+      provider: () => ({ getActiveKeyVersion: () => Promise.reject(new Error('gone')) }),
+    } as unknown as KeyManagementService;
+    const failing = { ping: () => Promise.reject(new Error('down')) } as unknown as Redis;
+    const noKeys = await createService(up, { keys: broken }).readiness();
+    expect(noKeys).toMatchObject({ status: 'error', checks: { encryption: { status: 'down' } } });
+    const noRedis = await createService(up, { redis: failing }).readiness();
+    expect(noRedis).toMatchObject({ status: 'ok', checks: { rateLimitStore: { status: 'down' } } });
   });
 });

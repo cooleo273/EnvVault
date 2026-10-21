@@ -43,6 +43,7 @@ import type { SecretRequestContext } from './secret-authorization.service.js';
 import { SecretHistoryService } from './secret-history.service.js';
 import { SECRETS_ROUTE } from './secret-transfers.controller.js';
 import { SecretsService } from './secrets.service.js';
+import { Idempotent } from '../idempotency/idempotency.interceptor.js';
 
 function contextOf(
   principal: Principal,
@@ -82,6 +83,7 @@ export class SecretsController {
   }
 
   @Post()
+  @Idempotent()
   @RequireEnvironmentPermission('secret:list')
   create(
     @CurrentPrincipal() principal: Principal,
@@ -153,6 +155,7 @@ export class SecretsController {
 
   /** Restores an earlier value as a new version. */
   @Post(':secretId/rollback')
+  @Idempotent()
   @HttpCode(HttpStatus.OK)
   @RequireEnvironmentPermission('secret:list')
   rollback(
@@ -166,6 +169,7 @@ export class SecretsController {
   }
 
   @Patch(':secretId')
+  @Idempotent()
   @RequireEnvironmentPermission('secret:list')
   update(
     @CurrentPrincipal() principal: Principal,
@@ -180,6 +184,7 @@ export class SecretsController {
 
   /** Soft delete; restorable. */
   @Delete(':secretId')
+  @Idempotent()
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequireEnvironmentPermission('secret:list')
   async remove(
@@ -198,6 +203,7 @@ export class SecretsController {
   }
 
   @Post(':secretId/restore')
+  @Idempotent()
   @HttpCode(HttpStatus.OK)
   @RequireEnvironmentPermission('secret:list')
   restore(

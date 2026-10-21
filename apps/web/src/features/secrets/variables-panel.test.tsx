@@ -46,6 +46,7 @@ function secret(overrides: Partial<SecretSummary> = {}): SecretSummary {
     category: 'Database',
     tags: ['backend'],
     isRequired: true,
+    inheritable: false,
     status: 'ACTIVE',
     hasValue: true,
     currentVersion: 2,

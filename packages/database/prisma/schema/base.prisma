@@ -107,6 +107,21 @@ enum SecretVersionOrigin {
   UPDATE
   IMPORT
   ROLLBACK
+  /// Written by restoring an environment snapshot.
+  RESTORE
+}
+
+/// Expected format of a variable's value in a validation rule.
+enum ValueFormat {
+  ANY
+  URL
+  JSON
+  NUMBER
+}
+
+enum EnvironmentSnapshotStatus {
+  /// Fully written and immutable.
+  COMPLETE
 }
 
 enum EncryptionAlgorithm {

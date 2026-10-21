@@ -86,7 +86,14 @@ async function init(path: string, overwrite: string | undefined, io: CliIo): Pro
 }
 
 async function rotate(path: string, io: CliIo): Promise<number> {
-  const rotated = rotateKeyring(await readKeyringFile(path));
+  const current = await readKeyringFile(path);
+  if (current.usage !== 'development') {
+    io.err(
+      'This keyring has usage "self-managed". Use the operator tooling (pnpm ops keys:rotate).',
+    );
+    return 1;
+  }
+  const rotated = rotateKeyring(current);
   await writeKeyringFile(path, rotated);
   io.out(`Rotated ${rotated.keyId}: version ${String(rotated.activeVersion)} is now active.`);
   io.out('Older versions remain available for decryption. Restart the API to use the new version.');

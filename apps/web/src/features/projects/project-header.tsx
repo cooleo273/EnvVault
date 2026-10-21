@@ -43,6 +43,7 @@ export function ProjectHeader({
   const tabs = [
     { href: base, label: 'Overview' },
     { href: `${base}/environments`, label: 'Environments' },
+    { href: `${base}/compare`, label: 'Compare' },
     ...(can('project_member:read') ? [{ href: `${base}/members`, label: 'Members' }] : []),
     { href: `${base}/activity`, label: 'Activity' },
     ...(can('project:update') || can('project:archive') || can('project:delete')

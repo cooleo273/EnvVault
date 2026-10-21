@@ -93,16 +93,46 @@ describe('encryption configuration', () => {
     ).toEqual([expect.stringContaining('must be an absolute path')]);
   });
 
-  it('refuses the local provider in production without echoing values', () => {
+  it('refuses production keys without an acknowledgement, and inline keyrings, without echoing values', () => {
     const inline = Buffer.from(serializeKeyring(generateKeyring())).toString('base64');
     const found = issues({
       ...base,
       NODE_ENV: 'production',
+      CORS_ORIGINS: 'https://app.example.com',
       ENCRYPTION_PROVIDER: 'local',
       ENCRYPTION_LOCAL_KEYRING: inline,
     });
-    expect(found.join('\n')).toContain('restricted to development');
+    expect(found.join('\n')).toContain('ENCRYPTION_SELF_MANAGED_ACKNOWLEDGED');
+    expect(found.join('\n')).toContain('ENCRYPTION_LOCAL_KEYRING');
     expect(found.join('\n')).not.toContain(inline);
+  });
+
+  it('runs production only on an acknowledged self managed keyring file', async () => {
+    const production = {
+      ...base,
+      NODE_ENV: 'production',
+      CORS_ORIGINS: 'https://app.example.com',
+      INTEGRITY_KEY_FILE: '/keys/integrity.json',
+      ENCRYPTION_PROVIDER: 'local',
+      ENCRYPTION_SELF_MANAGED_ACKNOWLEDGED: 'true',
+    };
+    const development = join(directory, 'dev.json');
+    await writeKeyringFile(development, generateKeyring());
+    await expect(
+      loadEncryption(parseEnv({ ...production, ENCRYPTION_KEYRING_FILE: development })),
+    ).rejects.toThrow('Development keyrings are restricted');
+
+    const managed = join(directory, 'self-managed.json');
+    await writeKeyringFile(managed, generateKeyring(new Date(), 'self-managed'));
+    const runtime = await loadEncryption(
+      parseEnv({ ...production, ENCRYPTION_KEYRING_FILE: managed }),
+    );
+    expect(runtime.status).toBe('ready');
+    await expect(
+      loadEncryption(
+        parseEnv({ ...base, ENCRYPTION_PROVIDER: 'local', ENCRYPTION_KEYRING_FILE: managed }),
+      ),
+    ).rejects.toThrow('only used in production');
   });
 
   it('loads a file-backed keyring and reports metadata only', async () => {
