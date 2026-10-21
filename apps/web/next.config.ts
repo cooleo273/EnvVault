@@ -15,6 +15,9 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? '.next',
   reactStrictMode: true,
   poweredByHeader: false,
+  // Development logs Server Function arguments by default, and secret
+  // actions receive plaintext values (create, update, import, reveal).
+  logging: { serverFunctions: false },
   // Phase 0 auth URLs. Query strings (e.g. reset tokens) are preserved.
   redirects() {
     return Promise.resolve([

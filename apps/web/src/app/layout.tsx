@@ -23,7 +23,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     // next-themes sets the theme class on <html> before hydration.
     <html lang="en" suppressHydrationWarning>
-      <body>
+      {/* Browser extensions (for example ColorZilla) add attributes to <body> before hydration. */}
+      <body suppressHydrationWarning>
         <ThemeProvider>
           {children}
           <Toaster />
