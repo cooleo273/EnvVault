@@ -54,6 +54,10 @@ model User {
   validationRulesUpdated    ConfigurationValidationRule[] @relation("ValidationRuleUpdatedBy")
   snapshotsCreated          EnvironmentSnapshot[]
 
+  retentionPoliciesUpdated RetentionPolicy[]   @relation("RetentionPolicyUpdatedBy")
+  maintenanceJobsRequested MaintenanceJob[]    @relation("MaintenanceJobRequestedBy")
+  idempotencyRecords       IdempotencyRecord[]
+
   @@index([email])
   @@index([lastWorkspaceId])
   @@map("users")
@@ -120,6 +124,9 @@ model Workspace {
   auditEvents            AuditEvent[]
   integrationConnections IntegrationConnection[]
   notifications          Notification[]
+
+  retentionPolicy RetentionPolicy?
+  maintenanceJobs MaintenanceJob[]
 
   @@index([createdById])
   @@map("workspaces")

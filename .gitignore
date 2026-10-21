@@ -77,3 +77,11 @@ Thumbs.db
 
 # Playwright auth state (contains test session cookies)
 apps/web/e2e-auth/.auth/
+
+# Phase 3E key material and operator files: never commit.
+*keyring*.json
+recovery-key*.json
+*recovery*.key.json
+*keyring-backup*.json
+integrity*.json
+infrastructure/deployment/env/*.env

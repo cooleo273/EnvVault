@@ -36,7 +36,10 @@
     "db:sync-catalog": "pnpm --filter @envvault/database db:sync-catalog",
     "crypto:init:dev": "turbo run build --filter=@envvault/crypto --output-logs=errors-only && node packages/crypto/dist/cli/dev-keys.js init",
     "crypto:rotate:dev": "turbo run build --filter=@envvault/crypto --output-logs=errors-only && node packages/crypto/dist/cli/dev-keys.js rotate",
-    "crypto:status:dev": "turbo run build --filter=@envvault/crypto --output-logs=errors-only && node packages/crypto/dist/cli/dev-keys.js status"
+    "crypto:status:dev": "turbo run build --filter=@envvault/crypto --output-logs=errors-only && node packages/crypto/dist/cli/dev-keys.js status",
+    "ops": "turbo run build --filter=@envvault/api --output-logs=errors-only && node apps/api/dist/ops/main.js",
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    "audit:deps": "pnpm audit --audit-level high --prod"
   },
   "devDependencies": {
     "@envvault/config": "workspace:*",

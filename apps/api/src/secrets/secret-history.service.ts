@@ -163,6 +163,7 @@ export class SecretHistoryService {
     const record = await this.vault.repos.secrets.get(scope, secretId);
     if (!record) throw notFound();
     await this.authorization.require(ctx, 'secret:rollback', 'secret.rolled_back', secretId);
+    await this.limiter.consume(ctx, 'rollback', secretId);
     if (record.deletedAt) throw conflict('This variable was deleted. Restore it first.');
     if (record.revision !== input.expectedRevision) throw conflict(STALE);
     const target = await this.vault.repos.secrets.version(scope, secretId, input.versionId);
@@ -190,6 +191,7 @@ export class SecretHistoryService {
     await this.vault.write(record.key, () =>
       withTransaction(this.database.client, async (tx) => {
         const repos = createRepositories(tx);
+        await this.authorization.recheck(ctx, repos, ['secret:rollback'], 'secret.rolled_back');
         const result = await repos.secrets.update(
           scope,
           secretId,

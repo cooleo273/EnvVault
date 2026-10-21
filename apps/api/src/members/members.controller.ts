@@ -25,6 +25,7 @@ import { requestIdOf } from '../common/request-id.util.js';
 import { UuidParam } from '../common/uuid-param.js';
 import { DatabaseService } from '../database/database.service.js';
 import { toWorkspaceMember } from '../workspaces/workspace.dto.js';
+import { LimitSensitiveAction } from '../rate-limit/sensitive-action.guard.js';
 
 const LAST_OWNER_CONSTRAINT = 'workspace_memberships_last_owner';
 
@@ -73,6 +74,7 @@ export class MembersController {
   }
 
   @Patch(':membershipId')
+  @LimitSensitiveAction('access-change')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequireWorkspacePermission('member:manage')
   async changeRole(
@@ -118,6 +120,7 @@ export class MembersController {
   }
 
   @Delete(':membershipId')
+  @LimitSensitiveAction('access-change')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequireWorkspacePermission('member:manage')
   async remove(

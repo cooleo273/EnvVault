@@ -14,3 +14,4 @@ export * from './schemas/secrets.js';
 export * from './schemas/secret-transfers.js';
 export * from './domain/safe-pattern.js';
 export * from './schemas/environment-intelligence.js';
+export * from './schemas/retention.js';

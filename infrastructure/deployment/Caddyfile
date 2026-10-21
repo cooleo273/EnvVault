@@ -1,0 +1,18 @@
+# TLS certificates come from Let's Encrypt (ACME). Caddy redirects http to
+# https and uses TLS 1.2 and 1.3 only.
+{
+	email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+	tls {
+		protocols tls1.2 tls1.3
+	}
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		-Server
+	}
+	# The API is not published: the web server reaches it on the backend network.
+	reverse_proxy web:3000
+}

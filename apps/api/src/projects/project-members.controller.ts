@@ -43,6 +43,7 @@ import { requestIdOf } from '../common/request-id.util.js';
 import { UuidParam } from '../common/uuid-param.js';
 import { DatabaseService } from '../database/database.service.js';
 import { cannotChangeOwnAccess, notFound } from './project.helpers.js';
+import { LimitSensitiveAction } from '../rate-limit/sensitive-action.guard.js';
 
 /**
  * Project membership. Members must be ACTIVE members of the same workspace
@@ -108,6 +109,7 @@ export class ProjectMembersController {
   }
 
   @Post('members')
+  @LimitSensitiveAction('access-change')
   @RequireProjectPermission('project_member:manage')
   async add(
     @CurrentPrincipal() principal: Principal,
@@ -169,6 +171,7 @@ export class ProjectMembersController {
   }
 
   @Patch('members/:memberId')
+  @LimitSensitiveAction('access-change')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequireProjectPermission('project_member:manage')
   async changeRole(
@@ -209,6 +212,7 @@ export class ProjectMembersController {
 
   /** Removes the member and their environment grants in this project. */
   @Delete('members/:memberId')
+  @LimitSensitiveAction('access-change')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequireProjectPermission('project_member:manage')
   async remove(

@@ -103,7 +103,10 @@ test('environments: compare, inherit, validate, snapshot and restore', async ({ 
   const snapshotUrl = page.url();
   await expect(page.getByTestId('snapshot-entry')).toHaveCount(2);
 
-  await page.goto(developmentUrl);
+  // Authenticated pages are never cached, and values are not rendered into the HTML.
+  const page1 = await page.goto(developmentUrl);
+  expect(page1?.headers()['cache-control']).toContain('no-store');
+  expect(await page1?.text()).not.toContain(TOKEN);
   await row(page, 'LOG_LEVEL').getByRole('button', { name: 'Actions for LOG_LEVEL' }).click();
   await page.getByRole('menuitem', { name: 'Edit' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit LOG_LEVEL' });

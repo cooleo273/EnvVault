@@ -17,6 +17,9 @@ export interface AuditEventInput {
   metadata?: Prisma.InputJsonObject;
 }
 
+/** An event raised by operator tooling or a background job, not by a user request. */
+export type SystemAuditEventInput = Omit<AuditEventInput, 'actorUserId'>;
+
 /** Append-only writer for `audit_events` (updates/deletes are blocked in SQL). */
 export class AuditRepository {
   constructor(private readonly db: DbClient) {}
@@ -27,6 +30,23 @@ export class AuditRepository {
         workspaceId: event.workspaceId ?? null,
         actorType: 'USER',
         actorUserId: event.actorUserId,
+        action: event.action,
+        outcome: event.outcome,
+        resourceType: event.resourceType,
+        resourceId: event.resourceId ?? null,
+        projectId: event.projectId ?? null,
+        environmentId: event.environmentId ?? null,
+        requestId: event.requestId ?? null,
+        metadata: event.metadata ?? {},
+      },
+    });
+  }
+
+  async appendSystem(event: SystemAuditEventInput): Promise<void> {
+    await this.db.auditEvent.create({
+      data: {
+        workspaceId: event.workspaceId ?? null,
+        actorType: 'SYSTEM',
         action: event.action,
         outcome: event.outcome,
         resourceType: event.resourceType,

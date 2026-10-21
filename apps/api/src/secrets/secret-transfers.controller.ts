@@ -35,6 +35,7 @@ import { requestIdOf } from '../common/request-id.util.js';
 import { SecretBulkService } from './secret-bulk.service.js';
 import { SecretExportService } from './secret-export.service.js';
 import { SecretImportService } from './secret-import.service.js';
+import { Idempotent } from '../idempotency/idempotency.interceptor.js';
 
 /** Route prefix shared with the larger JSON body limit in app.setup.ts. */
 export const SECRETS_ROUTE =
@@ -79,6 +80,7 @@ export class SecretTransfersController {
 
   /** Imports the selected entries in one transaction. */
   @Post('import')
+  @Idempotent()
   @HttpCode(HttpStatus.OK)
   @RequireEnvironmentPermission('secret:list')
   commit(
@@ -119,6 +121,7 @@ export class SecretTransfersController {
   }
 
   @Post('bulk')
+  @Idempotent()
   @HttpCode(HttpStatus.OK)
   @RequireEnvironmentPermission('secret:list')
   apply(

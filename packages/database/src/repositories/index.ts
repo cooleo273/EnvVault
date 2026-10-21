@@ -1,3 +1,7 @@
+import { AuditSealRepository } from './audit-seal.repository.js';
+import { IdempotencyRepository } from './idempotency.repository.js';
+import { MaintenanceJobRepository, RetentionRepository } from './retention.repository.js';
+import { KeyMaintenanceRepository } from './key-maintenance.repository.js';
 import type { DbClient } from '../client.js';
 import { AuditRepository } from './audit.repository.js';
 import { AuthStateRepository } from './auth-state.repository.js';
@@ -17,7 +21,11 @@ import { EncryptionKeyRepository, SecretRepository } from './secret.repository.j
 import { UserRepository } from './user.repository.js';
 import { WorkspaceRepository } from './workspace.repository.js';
 
-export { AuditRepository, type AuditEventInput } from './audit.repository.js';
+export {
+  AuditRepository,
+  type AuditEventInput,
+  type SystemAuditEventInput,
+} from './audit.repository.js';
 export { AuthStateRepository, MAX_STEP_UP_TTL_SECONDS } from './auth-state.repository.js';
 export {
   effectiveInvitationStatus,
@@ -112,12 +120,46 @@ export {
  *     ...
  *   });
  */
+export {
+  KeyMaintenanceRepository,
+  type EnvelopeQuery,
+  type KeyReferenceCount,
+  type StoredEnvelopeRow,
+} from './key-maintenance.repository.js';
+
+export {
+  AuditSealRepository,
+  type ChainHead,
+  type NewSeal,
+  type SealableEvent,
+  type StoredSeal,
+} from './audit-seal.repository.js';
+
+export {
+  MaintenanceJobRepository,
+  RetentionRepository,
+  type MaintenanceJobRecord,
+  type MaintenanceJobStatus,
+  type RetentionCounts,
+  type RetentionCutoffs,
+  type RetentionPolicyData,
+  type RetentionPolicyRecord,
+} from './retention.repository.js';
+
+export {
+  IdempotencyRepository,
+  type BeginResult,
+  type IdempotencyRequest,
+  type StoredIdempotency,
+} from './idempotency.repository.js';
+
 export function createRepositories(db: DbClient) {
   return {
     access: new AccessRepository(db),
     accessPolicies: new AccessPolicyRepository(db),
     activity: new ActivityRepository(db),
     audit: new AuditRepository(db),
+    auditSeals: new AuditSealRepository(db),
     authState: new AuthStateRepository(db),
     invitations: new InvitationRepository(db),
     memberships: new MembershipRepository(db),
@@ -126,7 +168,11 @@ export function createRepositories(db: DbClient) {
     templates: new TemplateRepository(db),
     roles: new RoleRepository(db),
     environments: new EnvironmentRepository(db),
+    idempotency: new IdempotencyRepository(db),
     encryptionKeys: new EncryptionKeyRepository(db),
+    keyMaintenance: new KeyMaintenanceRepository(db),
+    maintenanceJobs: new MaintenanceJobRepository(db),
+    retention: new RetentionRepository(db),
     secrets: new SecretRepository(db),
     secretBulk: new SecretBulkRepository(db),
     snapshots: new SnapshotRepository(db),

@@ -139,7 +139,8 @@ async function enumLabels(db: PrismaClient, name: string): Promise<string[]> {
   return rows.map((r) => r.label);
 }
 
-describe(`migration ${SECRETS_CRUD}`, () => {
+// Each step runs the real Prisma CLI, a few seconds apiece.
+describe(`migration ${SECRETS_CRUD}`, { timeout: 120_000 }, () => {
   const before = ALL.slice(0, ALL.indexOf(SECRETS_CRUD));
   let db: PrismaClient | undefined;
 
@@ -266,5 +267,177 @@ describe(`migration ${SECRETS_CRUD}`, () => {
     await expect(
       migrated.$executeRawUnsafe(`UPDATE secret_versions SET origin = 'ROLLBACK'`),
     ).rejects.toThrow(/immutable/);
+  });
+});
+
+const INTELLIGENCE = '20261023090000_environment_intelligence';
+const HARDENING = '20261024090000_security_hardening';
+
+/** Phase 3C shape: live and deleted variables, a rollback, audit events and a change request. */
+async function loadPhase3cData(db: PrismaClient): Promise<void> {
+  const v = (n: number) => `0190a000-0000-7000-8000-0000000004${String(n).padStart(2, '0')}`;
+  const s = (n: number) => `0190a000-0000-7000-8000-0000000005${String(n).padStart(2, '0')}`;
+  const bytes = (hex: string, n: number) => `decode('${hex.repeat(n)}', 'hex')`;
+  const version = (id: string, secret: string, n: number, origin: string, from: string | null) =>
+    `INSERT INTO secret_versions (id, workspace_id, secret_id, version_number, ciphertext, iv, auth_tag, encrypted_data_key, encryption_key_id, kms_key_version, origin, restored_from_version_id, created_by_user_id)
+     VALUES ('${id}', '${IDS.workspace}', '${secret}', ${String(n)}, ${bytes('a1', 30 + n)}, ${bytes('b2', 12)}, ${bytes('c3', 16)}, ${bytes('d4', 61)}, '${IDS.key}', '1', '${origin}', ${from ? `'${from}'` : 'NULL'}, '${IDS.user}')`;
+  const statements = [
+    `INSERT INTO users (id, email, auth_user_id, updated_at) VALUES ('${IDS.user}', 'phase3c@example.test', 'test:phase3c', now())`,
+    `INSERT INTO workspaces (id, name, slug, updated_at) VALUES ('${IDS.workspace}', 'Phase 3C', 'phase3c', now())`,
+    `INSERT INTO projects (id, workspace_id, name, slug, updated_at, color, icon) VALUES ('${IDS.project}', '${IDS.workspace}', 'P', 'p', now(), 'slate', 'folder')`,
+    `INSERT INTO environments (id, workspace_id, project_id, name, slug, kind, sort_order, updated_at, color, is_protected) VALUES ('${IDS.environment}', '${IDS.workspace}', '${IDS.project}', 'Prod', 'prod', 'PRODUCTION', 0, now(), 'slate', true)`,
+    `INSERT INTO encryption_keys (id, workspace_id, version, kms_provider, kms_key_ref, updated_at) VALUES ('${IDS.key}', '${IDS.workspace}', 1, 'local', 'local-phase3c', now())`,
+    `INSERT INTO secrets (id, workspace_id, project_id, environment_id, key, type, tags, is_required, revision, latest_version_number, created_by_user_id, updated_by_user_id, updated_at)
+     VALUES ('${s(1)}', '${IDS.workspace}', '${IDS.project}', '${IDS.environment}', 'DATABASE_URL', 'SECRET', ARRAY['db'], true, 4, 3, '${IDS.user}', '${IDS.user}', now()),
+            ('${s(2)}', '${IDS.workspace}', '${IDS.project}', '${IDS.environment}', 'LOG_LEVEL', 'STRING', ARRAY[]::text[], false, 1, 1, '${IDS.user}', '${IDS.user}', now())`,
+    `INSERT INTO secrets (id, workspace_id, project_id, environment_id, key, type, latest_version_number, created_by_user_id, updated_by_user_id, updated_at, deleted_at, deleted_by_user_id)
+     VALUES ('${s(3)}', '${IDS.workspace}', '${IDS.project}', '${IDS.environment}', 'OLD_TOKEN', 'SECRET', 1, '${IDS.user}', '${IDS.user}', now(), now(), '${IDS.user}')`,
+    version(v(1), s(1), 1, 'CREATE', null),
+    version(v(2), s(1), 2, 'UPDATE', null),
+    version(v(3), s(1), 3, 'ROLLBACK', v(1)),
+    version(v(4), s(2), 1, 'IMPORT', null),
+    version(v(5), s(3), 1, 'CREATE', null),
+    `UPDATE secrets SET current_version_id = '${v(3)}' WHERE id = '${s(1)}'`,
+    `UPDATE secrets SET current_version_id = '${v(4)}' WHERE id = '${s(2)}'`,
+    `UPDATE secrets SET current_version_id = '${v(5)}' WHERE id = '${s(3)}'`,
+    `INSERT INTO audit_events (id, workspace_id, actor_type, actor_user_id, action, outcome, resource_type, metadata)
+     VALUES ('0190a000-0000-7000-8000-000000000601', '${IDS.workspace}', 'USER', '${IDS.user}', 'secret.revealed', 'SUCCESS', 'secret', '{"key":"DATABASE_URL"}'),
+            ('0190a000-0000-7000-8000-000000000602', NULL, 'SYSTEM', NULL, 'system.started', 'SUCCESS', 'system', '{}')`,
+    `INSERT INTO change_requests (id, workspace_id, project_id, environment_id, title, required_approvals, requested_by_id, updated_at)
+     VALUES ('${IDS.changeRequest}', '${IDS.workspace}', '${IDS.project}', '${IDS.environment}', 'Pending', 1, '${IDS.user}', now())`,
+    `INSERT INTO change_request_items (id, workspace_id, change_request_id, operation, secret_id, secret_key, secret_type)
+     VALUES ('0190a000-0000-7000-8000-000000000701', '${IDS.workspace}', '${IDS.changeRequest}', 'DELETE', '${s(2)}', 'LOG_LEVEL', 'STRING')`,
+  ];
+  for (const sql of statements) await db.$executeRawUnsafe(sql);
+}
+
+const TABLES = [
+  'secrets',
+  'secret_versions',
+  'audit_events',
+  'change_request_items',
+  'environments',
+  'encryption_keys',
+];
+
+async function contents(
+  db: PrismaClient,
+  columnsOf: Record<string, string[]>,
+): Promise<Record<string, unknown[]>> {
+  const out: Record<string, unknown[]> = {};
+  for (const table of TABLES) {
+    const columns = (columnsOf[table] ?? []).map((c) => `"${c}"`).join(', ');
+    out[table] = await db.$queryRawUnsafe(`SELECT ${columns} FROM "${table}" ORDER BY "id"`);
+  }
+  return out;
+}
+
+async function columnsOf(db: PrismaClient): Promise<Record<string, string[]>> {
+  const rows = await db.$queryRawUnsafe<{ table_name: string; column_name: string }[]>(
+    `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' ORDER BY ordinal_position`,
+  );
+  const map: Record<string, string[]> = {};
+  for (const row of rows) (map[row.table_name] ??= []).push(row.column_name);
+  return map;
+}
+
+describe(`migrations ${INTELLIGENCE} and ${HARDENING}`, { timeout: 120_000 }, () => {
+  const before3d = ALL.slice(0, ALL.indexOf(INTELLIGENCE));
+  let db: PrismaClient | undefined;
+
+  beforeAll(() => {
+    expect(ALL.indexOf(HARDENING)).toBe(ALL.indexOf(INTELLIGENCE) + 1);
+  });
+
+  afterAll(async () => {
+    await db?.$disconnect();
+    const admin = createPrismaClient({ connectionString: baseUrl });
+    await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
+    await admin.$disconnect();
+  });
+
+  it('are each atomic: a failure on the last statement changes nothing', async () => {
+    await recreateDatabase();
+    deploy(before3d);
+    db = createPrismaClient({ connectionString: url });
+    await loadPhase3cData(db);
+    const schemaBefore = await columnsOf(db);
+    for (const name of [INTELLIGENCE, HARDENING]) {
+      const original = readFileSync(join(MIGRATIONS_DIR, name, 'migration.sql'), 'utf8');
+      const failing = original.replace(/COMMIT;\s*$/, 'SELECT 1 / 0;\nCOMMIT;\n');
+      expect(failing).not.toBe(original);
+      const applied = name === INTELLIGENCE ? before3d : [...before3d, INTELLIGENCE];
+      if (name === HARDENING) deploy(applied);
+      const expected = await columnsOf(db);
+      expect(() => {
+        deploy([...applied, name], { name, sql: failing });
+      }).toThrow();
+      expect(await columnsOf(db)).toEqual(expected);
+      if (name === INTELLIGENCE) {
+        expect(expected).toEqual(schemaBefore);
+        expect(await enumLabels(db, 'SecretVersionOrigin')).not.toContain('RESTORE');
+        // A failed migration is recorded; clear it so the next deploy can retry.
+        await db.$executeRawUnsafe(
+          `DELETE FROM "_prisma_migrations" WHERE "migration_name" = '${name}'`,
+        );
+      } else {
+        const triggers = await db.$queryRawUnsafe<{ n: bigint }[]>(
+          `SELECT count(*) AS n FROM pg_trigger WHERE tgname = 'audit_seals_append_only'`,
+        );
+        expect(Number(triggers[0]?.n)).toBe(0);
+        await expect(db.$executeRawUnsafe(`DELETE FROM audit_events`)).rejects.toThrow(
+          /append-only/,
+        );
+        await db.$executeRawUnsafe(
+          `DELETE FROM "_prisma_migrations" WHERE "migration_name" = '${name}'`,
+        );
+      }
+    }
+    await db.$disconnect();
+    db = undefined;
+  });
+
+  it('keep every Phase 3C row and byte, and their constraints accept existing data', async () => {
+    await recreateDatabase();
+    deploy(before3d);
+    db = createPrismaClient({ connectionString: url });
+    await loadPhase3cData(db);
+    const oldColumns = await columnsOf(db);
+    const before = await contents(db, oldColumns);
+
+    deploy([...before3d, INTELLIGENCE, HARDENING]);
+
+    // The same columns, read after both migrations, hold the same values.
+    expect(await contents(db, oldColumns)).toEqual(before);
+    const added = await db.$queryRawUnsafe<{ inheritable: boolean; base: string | null }[]>(
+      `SELECT s.inheritable, e.base_environment_id AS base FROM secrets s JOIN environments e ON e.id = s.environment_id`,
+    );
+    expect(added.every((r) => !r.inheritable && r.base === null)).toBe(true);
+    expect(await enumLabels(db, 'SecretVersionOrigin')).toContain('RESTORE');
+    // Recreated rollback check: the existing rollback row is still valid, an invalid one is not.
+    await expect(
+      db.$executeRawUnsafe(
+        `INSERT INTO secret_versions (id, workspace_id, secret_id, version_number, ciphertext, iv, auth_tag, encrypted_data_key, encryption_key_id, kms_key_version, origin, created_by_user_id)
+         SELECT gen_random_uuid(), workspace_id, secret_id, 9, ciphertext, iv, auth_tag, encrypted_data_key, encryption_key_id, kms_key_version, 'RESTORE', created_by_user_id FROM secret_versions LIMIT 1`,
+      ),
+    ).rejects.toThrow(/rollback_source_chk/);
+    // Audit history stays append only; only a retention purge may delete.
+    await expect(
+      db.$executeRawUnsafe(`UPDATE audit_events SET outcome = 'DENIED'`),
+    ).rejects.toThrow(/append-only/);
+    await expect(db.$executeRawUnsafe(`DELETE FROM audit_events`)).rejects.toThrow(/append-only/);
+    for (const table of [
+      'audit_seals',
+      'retention_policies',
+      'maintenance_jobs',
+      'idempotency_records',
+    ]) {
+      const rows = await db.$queryRawUnsafe<{ n: bigint }[]>(
+        `SELECT count(*) AS n FROM "${table}"`,
+      );
+      expect(Number(rows[0]?.n), table).toBe(0);
+    }
+    // Every remaining migration (none today) still applies.
+    deploy(ALL);
   });
 });

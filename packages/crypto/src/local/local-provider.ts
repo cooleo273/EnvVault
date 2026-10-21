@@ -39,8 +39,14 @@ export interface LocalKeyProviderOptions {
   persist?: (keyring: Keyring) => Promise<void>;
   /** Re-reads the persisted keyring before rotating, so concurrent edits are not lost. */
   reload?: () => Promise<Keyring>;
-  /** NODE_ENV of the process. The local provider refuses `production`. */
+  /** NODE_ENV of the process; decides which keyring usage is accepted. */
   nodeEnv?: string | undefined;
+  /**
+   * Operator acknowledgement that production runs on self managed keys
+   * (no HSM, no independent key use log). Required for a `self-managed`
+   * keyring in production; ignored elsewhere.
+   */
+  acceptSelfManagedProduction?: boolean;
   source?: LocalKeyringSource;
 }
 
@@ -64,6 +70,38 @@ function wrapAad(reference: KeyReference, context: DataKeyContext): Buffer {
 }
 
 /**
+ * Development keyrings never run in production; `self-managed` keyrings run
+ * only in production, from a file, with the operator's acknowledgement, so
+ * production keys do not end up on developer machines by accident.
+ */
+function assertUsageAllowed(keyring: Keyring, options: LocalKeyProviderOptions): void {
+  const production = options.nodeEnv === 'production';
+  if (keyring.usage === 'development') {
+    if (production) {
+      throw new KeyConfigurationError(
+        'Development keyrings are restricted to development and test environments',
+      );
+    }
+    return;
+  }
+  if (!production) {
+    throw new KeyConfigurationError(
+      'Keyrings with usage "self-managed" are only used in production',
+    );
+  }
+  if (options.acceptSelfManagedProduction !== true) {
+    throw new KeyConfigurationError(
+      'Keyrings with usage "self-managed" need ENCRYPTION_SELF_MANAGED_ACKNOWLEDGED=true in production',
+    );
+  }
+  if (options.source?.kind !== 'file') {
+    throw new KeyConfigurationError(
+      'Keyrings with usage "self-managed" must be loaded from a file',
+    );
+  }
+}
+
+/**
  * Self-managed key provider for development and testing. Key encryption keys
  * come from a {@link Keyring} held outside the database and wrap per-version
  * data keys with AES-256-GCM.
@@ -80,13 +118,10 @@ export class LocalKeyProvider implements KeyManagementProvider {
 
   constructor(keyring: Keyring, options: LocalKeyProviderOptions = {}) {
     assertServerRuntime();
-    if (options.nodeEnv === 'production') {
-      throw new KeyConfigurationError(
-        'The local key provider is restricted to development and test environments',
-      );
-    }
+    const parsed = parseKeyring(keyring);
+    assertUsageAllowed(parsed, options);
     this.#options = options;
-    this.#keyring = parseKeyring(keyring);
+    this.#keyring = parsed;
     this.#load(this.#keyring);
   }
 
@@ -213,6 +248,9 @@ export class LocalKeyProvider implements KeyManagementProvider {
       throw new KeyConfigurationError('Key rotation requires a file-backed keyring');
     }
     const latest = this.#options.reload ? await this.#options.reload() : this.#keyring;
+    if (latest.keyId !== this.#keyring.keyId) {
+      throw new KeyConfigurationError('The keyring file was replaced; restart before rotating');
+    }
     const rotated = rotateKeyring(latest);
     // Persist first: a new key must never be used before it is durably stored.
     await persist(rotated);

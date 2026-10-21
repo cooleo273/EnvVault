@@ -66,7 +66,12 @@ import {
   snapshotDetailSchema,
   snapshotDiffInputSchema,
   snapshotDiffSchema,
+  maintenanceJobSchema,
   restorePreviewInputSchema,
+  retentionPolicyInputSchema,
+  retentionPolicySchema,
+  retentionPreviewSchema,
+  startRetentionRunInputSchema,
   restorePreviewSchema,
   restoreSnapshotInputSchema,
   restoreResultSchema,
@@ -107,7 +112,7 @@ export interface RouteDoc {
   body?: z.ZodType;
   /** Response schema; omitted for 204 No Content. */
   response?: z.ZodType;
-  status: 200 | 201 | 204;
+  status: 200 | 201 | 202 | 204;
 }
 
 const created = z.object({ id: z.uuid(), slug: z.string() });
@@ -976,5 +981,62 @@ export const ROUTES: readonly RouteDoc[] = [
     tag: 'Templates',
     permission: 'workspace:update',
     status: 204,
+  },
+  {
+    method: 'get',
+    path: `${W}/retention`,
+    summary: 'Retention policy of a workspace',
+    tag: 'Retention',
+    permission: 'workspace:update',
+    response: retentionPolicySchema,
+    status: 200,
+  },
+  {
+    method: 'put',
+    path: `${W}/retention`,
+    summary: 'Replace the retention policy (protected environments need a step up)',
+    tag: 'Retention',
+    permission: 'workspace:update',
+    body: retentionPolicyInputSchema,
+    response: retentionPolicySchema,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: `${W}/retention/preview`,
+    summary: 'Count what the policy would purge now, without purging',
+    tag: 'Retention',
+    permission: 'workspace:update',
+    response: retentionPreviewSchema,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: `${W}/retention/runs`,
+    summary: 'Queue a purge (typed confirmation and step up required)',
+    tag: 'Retention',
+    permission: 'workspace:delete',
+    stepUp: true,
+    body: startRetentionRunInputSchema,
+    response: maintenanceJobSchema,
+    status: 202,
+  },
+  {
+    method: 'get',
+    path: `${W}/retention/runs`,
+    summary: 'Recent purge runs',
+    tag: 'Retention',
+    permission: 'workspace:update',
+    response: z.object({ items: z.array(maintenanceJobSchema) }),
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: `${W}/retention/runs/{jobId}`,
+    summary: 'One purge run with its progress',
+    tag: 'Retention',
+    permission: 'workspace:update',
+    response: maintenanceJobSchema,
+    status: 200,
   },
 ];

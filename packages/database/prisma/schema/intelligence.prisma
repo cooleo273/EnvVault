@@ -58,6 +58,7 @@ model EnvironmentSnapshot {
   @@unique([workspaceId, id])
   @@unique([id, environmentId])
   @@index([environmentId, createdAt(sort: Desc)])
+  @@index([workspaceId, createdAt], map: "environment_snapshots_created_at_idx")
   @@map("environment_snapshots")
 }
 

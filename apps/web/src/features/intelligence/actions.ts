@@ -20,7 +20,7 @@ import {
 } from '@envvault/shared';
 import { revalidatePath } from 'next/cache';
 import { failure, invalid, type SecretActionResult } from '@/features/secrets/action-helpers';
-import { withApi } from '@/lib/api/server-api';
+import { withApi, withApiMutation } from '@/lib/api/server-api';
 import { environmentPath, projectPath } from '@/lib/projects/server';
 import './messages';
 
@@ -62,7 +62,7 @@ export async function setBaseEnvironmentAction(
   const parsed = updateInheritanceInputSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   try {
-    const data = await withApi((api) =>
+    const data = await withApiMutation((api) =>
       api.setBaseEnvironment(workspaceId, projectId, environmentId, parsed.data.baseEnvironmentId),
     );
     refresh(workspaceId, projectId, environmentId);
@@ -86,7 +86,7 @@ export async function replaceValidationRulesAction(
   const parsed = replaceValidationRulesInputSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   try {
-    const data = await withApi((api) =>
+    const data = await withApiMutation((api) =>
       api.replaceValidationRules(workspaceId, projectId, environmentId, parsed.data),
     );
     refresh(workspaceId, projectId, environmentId);
@@ -125,7 +125,7 @@ export async function createSnapshotAction(
   const parsed = createSnapshotInputSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   try {
-    const data = await withApi((api) =>
+    const data = await withApiMutation((api) =>
       api.createSnapshot(workspaceId, projectId, environmentId, parsed.data),
     );
     refresh(workspaceId, projectId, environmentId);
@@ -187,7 +187,7 @@ export async function restoreSnapshotAction(
   const parsed = restoreSnapshotInputSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   try {
-    const data = await withApi((api) =>
+    const data = await withApiMutation((api) =>
       api.restoreSnapshot(workspaceId, projectId, environmentId, snapshotId, parsed.data),
     );
     refresh(workspaceId, projectId, environmentId);

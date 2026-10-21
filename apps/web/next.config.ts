@@ -13,6 +13,10 @@ const env = parsePublicEnv(process.env);
 const nextConfig: NextConfig = {
   // Separate build dir lets the e2e dev server run next to a developer's own `next dev`.
   distDir: process.env.NEXT_DIST_DIR ?? '.next',
+  // Container images ship the traced standalone server (infrastructure/deployment).
+  ...(process.env.NEXT_OUTPUT === 'standalone'
+    ? { output: 'standalone' as const, outputFileTracingRoot: resolve(process.cwd(), '../..') }
+    : {}),
   reactStrictMode: true,
   poweredByHeader: false,
   // Development logs Server Function arguments by default, and secret

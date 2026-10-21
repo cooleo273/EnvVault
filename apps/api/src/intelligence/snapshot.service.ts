@@ -146,13 +146,13 @@ export class SnapshotService {
           );
           if (rows.length > INTELLIGENCE_LIMITS.variables) throw tooLarge();
           const detail = await repos.environments.getDetail(environment.scope);
-          const created = await repos.snapshots.create(
+          const created = await repos.snapshots.captureLive(
             environment.scope,
             {
               id: uuidV7(),
               description: input.description?.trim() ? input.description.trim() : null,
               baseEnvironmentId: detail?.baseEnvironmentId ?? null,
-              entries: rows.map(entryFromRow),
+              expected: rows.length,
             },
             caller.principal.userId,
           );
@@ -337,7 +337,9 @@ export class SnapshotService {
     const ctx = this.ctx(caller, environment);
     await this.requireRestore(ctx, snapshotId, false);
     const plan = await this.plan(environment, snapshotId, input.removeAdded);
-    if (plan.deletes.length > 0 || plan.items.some((i) => i.action === 'undelete')) {
+    const deletesOrUndeletes =
+      plan.deletes.length > 0 || plan.items.some((i) => i.action === 'undelete');
+    if (deletesOrUndeletes) {
       await this.authorization.require(
         ctx,
         'secret:delete',
@@ -352,6 +354,7 @@ export class SnapshotService {
         'environment.snapshot_restored',
       );
     }
+    await this.limiter.consume(ctx, 'restore', environment.scope.environmentId);
     const expected = new Map(input.expectedState.map((s) => [s.id, s.revision]));
     if (
       expected.size !== plan.expectedState.length ||
@@ -425,6 +428,14 @@ export class SnapshotService {
           this.database.client,
           async (tx) => {
             const repos = createRepositories(tx);
+            await this.authorization.recheck(
+              ctx,
+              repos,
+              deletesOrUndeletes
+                ? ['secret:write', 'secret:rollback', 'secret:delete']
+                : ['secret:write', 'secret:rollback'],
+              'environment.snapshot_restored',
+            );
             const user = caller.principal.userId;
             if (plan.deletes.length > 0) {
               const deleted = await repos.secretBulk.softDelete(

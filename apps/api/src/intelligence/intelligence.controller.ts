@@ -58,6 +58,7 @@ import type { ProjectCaller } from './environment-access.service.js';
 import { ReadinessService } from './readiness.service.js';
 import { SnapshotService } from './snapshot.service.js';
 import { ValidationService } from './validation.service.js';
+import { Idempotent } from '../idempotency/idempotency.interceptor.js';
 
 function callerOf(
   principal: Principal,
@@ -201,6 +202,7 @@ export class EnvironmentIntelligenceController {
   }
 
   @Post('snapshots')
+  @Idempotent()
   @RequireEnvironmentPermission('secret:list')
   createSnapshot(
     @CurrentPrincipal() principal: Principal,
@@ -273,6 +275,7 @@ export class EnvironmentIntelligenceController {
   }
 
   @Post('snapshots/:snapshotId/restore')
+  @Idempotent()
   @HttpCode(HttpStatus.OK)
   @RequireEnvironmentPermission('secret:list')
   restore(

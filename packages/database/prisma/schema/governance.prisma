@@ -104,6 +104,7 @@ model AuditEvent {
 
   /// NO ACTION: a workspace cannot be hard-purged while audit records exist.
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: NoAction)
+  seal      AuditSeal?
 
   @@index([workspaceId, occurredAt(sort: Desc)])
   @@index([projectId, occurredAt(sort: Desc)])
@@ -111,5 +112,6 @@ model AuditEvent {
   @@index([workspaceId, resourceType, resourceId])
   @@index([actorUserId, occurredAt])
   @@index([actorServiceIdentityId, occurredAt])
+  @@index([occurredAt, id])
   @@map("audit_events")
 }

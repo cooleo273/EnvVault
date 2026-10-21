@@ -172,6 +172,25 @@ Refusals of data plane permissions are audited as `secret.access_denied`, like e
 secret operation. An environment the caller cannot see answers 404, and a base the caller
 cannot read is shown as **Restricted environment** without its name.
 
+## 8. Phase 3E changes
+
+No permission or role was added. What changed is when and how often the existing rules are
+applied:
+
+| Area                                     | Rule                                                                                                                            |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Retention policy (read, change, preview) | `workspace:update`; including protected environments needs a step up                                                            |
+| Retention purge                          | `workspace:delete` (Owner), step up, workspace slug typed as confirmation                                                       |
+| Long mutations                           | Import commit, bulk changes, rollback and snapshot restore evaluate permissions again inside the write transaction              |
+| Refusals                                 | 403 at the request guard is audited as `authz.denied`, once per user, route and minute                                          |
+| Rate limits                              | Per user limits on grants, revocations, member and role changes, invitations and step up, counted after authorization           |
+| Operator tooling                         | `pnpm ops` runs with database and key file access on the host; it is outside the role model and must be restricted to operators |
+
+Unchanged and verified by tests: workspace roles carry no secret permission, protected
+environments never inherit data plane permissions, DENY wins, expired grants are ignored,
+removed members lose access on their next request, another tenant's ids answer 404, and
+nobody can change their own role or grants.
+
 New permissions belong in `packages/shared/src/domain/permissions.ts`. Classify each as
 project, environment or data plane scoped in `access.ts`, then run `pnpm db:sync-catalog` to
 update existing workspaces.

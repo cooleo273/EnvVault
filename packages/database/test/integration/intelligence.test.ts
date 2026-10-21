@@ -92,10 +92,18 @@ describe('inheritance constraints', () => {
       db.environment.update({ where: { id: staging.id }, data: { baseEnvironmentId: qa.id } }),
       /cannot itself inherit/,
     );
-    // Development is a base, so it cannot inherit (that would allow a cycle).
+    // Development is a base (of QA), so it cannot inherit, even from a base that does not inherit.
+    await expectTriggerRejection(
+      db.environment.update({
+        where: { id: t.developmentId },
+        data: { baseEnvironmentId: staging.id },
+      }),
+      /other environments inherit from cannot inherit/,
+    );
+    // Development -> QA: QA inherits, so it cannot be a base either.
     await expectTriggerRejection(
       db.environment.update({ where: { id: t.developmentId }, data: { baseEnvironmentId: qa.id } }),
-      /cannot inherit/,
+      /cannot itself inherit/,
     );
   });
 

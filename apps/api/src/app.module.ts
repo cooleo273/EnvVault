@@ -1,6 +1,9 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule, type ThrottlerStorage } from '@nestjs/throttler';
+import { RateLimitModule } from './rate-limit/rate-limit.module.js';
+import { RATE_LIMIT_STORAGE } from './rate-limit/sensitive-rate-limiter.js';
+import { UserRateLimitGuard } from './rate-limit/user-rate-limit.guard.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AuthenticationGuard } from './auth/authentication.guard.js';
 import { AuthorizationGuard } from './auth/authorization.guard.js';
@@ -17,14 +20,20 @@ import {
 } from './encryption/encryption.config.js';
 import { EncryptionModule } from './encryption/encryption.module.js';
 import { HealthModule } from './health/health.module.js';
+import { IntegrityKeys } from '@envvault/crypto';
+import type { IntegrityRuntime } from './integrity/integrity.config.js';
+import { IntegrityModule } from './integrity/integrity.module.js';
 import { IntelligenceModule } from './intelligence/intelligence.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
+import { RetentionModule } from './retention/retention.module.js';
 import { SecretsModule } from './secrets/secrets.module.js';
 import { WorkspacesModule } from './workspaces/workspaces.module.js';
 
 export interface AppModuleOptions {
   /** Loaded by loadEncryption() before the app starts. Default: disabled. */
   encryption?: EncryptionRuntime;
+  /** Loaded by loadIntegrity() before the app starts. Default: process local keys. */
+  integrity?: IntegrityRuntime;
 }
 
 @Module({})
@@ -41,11 +50,12 @@ export class AppModule {
       imports: [
         AppConfigModule.register(env),
         LoggingModule,
-        // In-memory rate-limit storage: per-instance only. A shared (Redis) store
-        // is required before running multiple API replicas.
+        RateLimitModule,
+        // Storage is shared (Redis) when RATE_LIMIT_STORE=redis, per instance otherwise.
         ThrottlerModule.forRootAsync({
-          inject: [APP_ENV],
-          useFactory: (config: Env) => ({
+          inject: [APP_ENV, RATE_LIMIT_STORAGE],
+          useFactory: (config: Env, storage: ThrottlerStorage) => ({
+            storage,
             throttlers: [
               {
                 name: 'default',
@@ -63,19 +73,24 @@ export class AppModule {
         }),
         DatabaseModule,
         EncryptionModule.register(encryption),
+        IntegrityModule.register(
+          options.integrity ?? { status: 'ephemeral', keys: IntegrityKeys.ephemeral() },
+        ),
         HealthModule,
         AuthModule,
         WorkspacesModule,
         ProjectsModule,
         SecretsModule,
         IntelligenceModule,
+        RetentionModule,
       ],
       providers: [
-        // Global guards run in this order: rate limit, authenticate, authorize.
+        // Global guards run in this order: address limit, authenticate, user limit, authorize.
         // Every route is authenticated and must declare an authorization
         // requirement unless explicitly @Public() (default deny).
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: AuthenticationGuard },
+        { provide: APP_GUARD, useClass: UserRateLimitGuard },
         { provide: APP_GUARD, useClass: AuthorizationGuard },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
       ],

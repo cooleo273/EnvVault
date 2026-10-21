@@ -29,6 +29,11 @@ export const envSchema = z
     API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
     LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+    /** A suspended Neon compute can take a few seconds to accept connections. */
+    DATABASE_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(10_000),
+    /** Client side limit per query; long bulk transactions use one statement per batch. */
+    DATABASE_QUERY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(30_000),
+    DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).optional(),
     /** Comma-separated list of exact browser origins allowed to call the API. */
     CORS_ORIGINS: z
       .string()
@@ -41,7 +46,24 @@ export const envSchema = z
       )
       .pipe(z.array(originSchema).min(1)),
     RATE_LIMIT_TTL_SECONDS: z.coerce.number().int().positive().default(60),
-    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+    /**
+     * Per client address. Browser traffic reaches the API from the web
+     * server, so this is a coarse outer bound shared by all its users; the
+     * per user limits below are the real control.
+     */
+    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(1000),
+    /** Requests per minute per authenticated user, across all routes. */
+    RATE_LIMIT_USER_MAX: z.coerce.number().int().min(10).max(100_000).default(600),
+    /**
+     * `memory` counts per API instance; `redis` shares counters between
+     * instances (required for more than one instance).
+     */
+    RATE_LIMIT_STORE: z.enum(['memory', 'redis']).default('memory'),
+    REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
+    RATE_LIMIT_KEY_PREFIX: z
+      .string()
+      .regex(/^[a-z0-9:_-]{1,64}$/)
+      .default('envvault:rl:'),
     /** Per-minute limit for sensitive endpoints (invitation tokens), per client. */
     RATE_LIMIT_SENSITIVE_MAX: z.coerce.number().int().positive().default(20),
     /** Enable only when running behind a trusted reverse proxy / load balancer. */
@@ -97,6 +119,23 @@ export const envSchema = z
     ENCRYPTION_KEYRING_FILE: z.string().min(1).optional(),
     /** Alternative to the file: base64 of the keyring JSON (server-side secret). */
     ENCRYPTION_LOCAL_KEYRING: z.string().min(1).optional(),
+    /**
+     * Production only: the operator accepts that keys are self managed (a
+     * file on the API host, no HSM, no independent key use log). Without it a
+     * production API refuses to start with the local provider.
+     */
+    ENCRYPTION_SELF_MANAGED_ACKNOWLEDGED: booleanString.default(false),
+
+    /*
+     * HMAC keys for audit seals and idempotency fingerprints, created with
+     * `pnpm ops integrity:init-key`. Kept outside the database. Required in
+     * production; without it development seals nothing.
+     */
+    INTEGRITY_KEY_FILE: z.string().min(1).optional(),
+    /** Seconds between audit sealing passes; 0 turns the background sealer off. */
+    AUDIT_SEAL_INTERVAL_SECONDS: z.coerce.number().int().min(0).max(3600).default(30),
+    /** Seconds between polls for queued maintenance jobs (retention); 0 turns the worker off. */
+    MAINTENANCE_POLL_SECONDS: z.coerce.number().int().min(0).max(3600).default(15),
 
     /*
      * Bulk secret operations (docs/secrets.md). Each limit may be lowered,
@@ -136,6 +175,18 @@ export const envSchema = z
     SECRET_REVEAL_RESOURCE_RATE_LIMIT: z.coerce.number().int().min(1).max(10_000).default(20),
     /** Exports and value comparing import previews by one user, per minute. */
     SECRET_BULK_READ_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(10),
+    /** Import commits by one user, per minute. */
+    SECRET_IMPORT_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(10),
+    /** Bulk updates, deletes and restores by one user, per minute. */
+    SECRET_BULK_WRITE_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(20),
+    /** Version rollbacks by one user, per minute. */
+    SECRET_ROLLBACK_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(30),
+    /** Snapshot restores by one user, per minute. */
+    SNAPSHOT_RESTORE_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(5),
+    /** Grants, revocations and role changes by one user, per minute. */
+    ACCESS_CHANGE_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(30),
+    /** Password confirmations (step up) by one user, per five minutes. */
+    STEP_UP_RATE_LIMIT: z.coerce.number().int().min(1).max(100).default(5),
   })
   .superRefine((env, ctx) => {
     // Keys must come from the same Neon Auth branch as the issuer: mixing a
@@ -148,6 +199,20 @@ export const envSchema = z
         code: 'custom',
         path: ['NEON_AUTH_JWKS_URL'],
         message: 'must have the same origin as NEON_AUTH_BASE_URL (same Neon Auth branch)',
+      });
+    }
+    if (env.INTEGRITY_KEY_FILE !== undefined && !isAbsolute(env.INTEGRITY_KEY_FILE)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['INTEGRITY_KEY_FILE'],
+        message: 'must be an absolute path',
+      });
+    }
+    if (env.RATE_LIMIT_STORE === 'redis' && env.REDIS_URL === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['REDIS_URL'],
+        message: 'is required when RATE_LIMIT_STORE=redis',
       });
     }
     const keyringSources = [env.ENCRYPTION_KEYRING_FILE, env.ENCRYPTION_LOCAL_KEYRING].filter(
@@ -175,12 +240,19 @@ export const envSchema = z
           message: 'must be an absolute path',
         });
       }
-      if (env.NODE_ENV === 'production') {
+      if (env.NODE_ENV === 'production' && !env.ENCRYPTION_SELF_MANAGED_ACKNOWLEDGED) {
         ctx.addIssue({
           code: 'custom',
-          path: ['ENCRYPTION_PROVIDER'],
+          path: ['ENCRYPTION_SELF_MANAGED_ACKNOWLEDGED'],
           message:
-            'the local key provider is restricted to development and test; production needs a reviewed managed KMS provider',
+            'must be true to run production on self managed keys (see docs/key-management.md); a managed KMS provider is the recommended alternative',
+        });
+      }
+      if (env.NODE_ENV === 'production' && env.ENCRYPTION_LOCAL_KEYRING !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['ENCRYPTION_LOCAL_KEYRING'],
+          message: 'is not allowed in production; mount the keyring as a read only file',
         });
       }
     }
@@ -196,6 +268,13 @@ export const envSchema = z
           message: 'must be a non-local https URL in production',
         });
       }
+    }
+    if (env.INTEGRITY_KEY_FILE === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['INTEGRITY_KEY_FILE'],
+        message: 'is required in production (audit seals and idempotency)',
+      });
     }
     if (env.APP_BASE_URL !== undefined && !env.APP_BASE_URL.startsWith('https://')) {
       ctx.addIssue({

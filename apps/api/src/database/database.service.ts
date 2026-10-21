@@ -21,6 +21,9 @@ export class DatabaseService implements OnModuleDestroy {
     this.client = createPrismaClient({
       connectionString: env.DATABASE_URL,
       applicationName: 'envvault-api',
+      connectionTimeoutMs: env.DATABASE_CONNECT_TIMEOUT_MS,
+      queryTimeoutMs: env.DATABASE_QUERY_TIMEOUT_MS,
+      ...(env.DATABASE_POOL_MAX === undefined ? {} : { maxConnections: env.DATABASE_POOL_MAX }),
     });
   }
 

@@ -1,6 +1,13 @@
 import {
   type CompareEnvironmentsInput,
   type CreateSnapshotInput,
+  type MaintenanceJob,
+  maintenanceJobSchema,
+  type RetentionPolicy,
+  type RetentionPolicyInput,
+  retentionPolicySchema,
+  type RetentionPreview,
+  retentionPreviewSchema,
   type EffectiveConfiguration,
   effectiveConfigurationSchema,
   type EnvironmentComparison,
@@ -157,8 +164,11 @@ export class EnvVaultClient {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private readonly getAccessToken: (() => Promise<string | null>) | undefined;
+  private readonly options: EnvVaultClientOptions;
+  private idempotencyKey: string | undefined;
 
   constructor(options: EnvVaultClientOptions) {
+    this.options = options;
     const url = new URL(options.baseUrl);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') {
       throw new Error('baseUrl must use http or https');
@@ -167,6 +177,17 @@ export class EnvVaultClient {
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.timeoutMs = options.timeoutMs ?? 10_000;
     this.getAccessToken = options.getAccessToken;
+  }
+
+  /**
+   * A client that sends `Idempotency-Key: key` with its mutations, so a
+   * retried request (network error, double submit) is answered from the first
+   * one instead of running twice. Use a fresh key per user action.
+   */
+  withIdempotencyKey(key: string): EnvVaultClient {
+    const scoped = new EnvVaultClient(this.options);
+    scoped.idempotencyKey = key;
+    return scoped;
   }
 
   /** Liveness check: `GET /api/v1/health`. */
@@ -1116,6 +1137,49 @@ export class EnvVaultClient {
     });
   }
 
+  retentionPolicy(workspaceId: string): Promise<RetentionPolicy> {
+    return this.request(`/workspaces/${workspaceId}/retention`, { schema: retentionPolicySchema });
+  }
+
+  updateRetentionPolicy(
+    workspaceId: string,
+    input: RetentionPolicyInput,
+  ): Promise<RetentionPolicy> {
+    return this.request(`/workspaces/${workspaceId}/retention`, {
+      method: 'PUT',
+      body: input,
+      schema: retentionPolicySchema,
+    });
+  }
+
+  previewRetention(workspaceId: string): Promise<RetentionPreview> {
+    return this.request(`/workspaces/${workspaceId}/retention/preview`, {
+      method: 'POST',
+      schema: retentionPreviewSchema,
+    });
+  }
+
+  /** Queues a purge. Needs workspace:delete, a recent step up and the slug as confirmation. */
+  startRetentionRun(workspaceId: string, confirm: string): Promise<MaintenanceJob> {
+    return this.request(`/workspaces/${workspaceId}/retention/runs`, {
+      method: 'POST',
+      body: { confirm },
+      schema: maintenanceJobSchema,
+    });
+  }
+
+  retentionRuns(workspaceId: string): Promise<{ items: MaintenanceJob[] }> {
+    return this.request(`/workspaces/${workspaceId}/retention/runs`, {
+      schema: z.object({ items: z.array(maintenanceJobSchema) }),
+    });
+  }
+
+  retentionRun(workspaceId: string, jobId: string): Promise<MaintenanceJob> {
+    return this.request(`/workspaces/${workspaceId}/retention/runs/${jobId}`, {
+      schema: maintenanceJobSchema,
+    });
+  }
+
   private async request<T>(path: string, options: RequestOptions<T>): Promise<T> {
     const headers: Record<string, string> = { accept: 'application/json' };
     if (options.authenticated !== false) {
@@ -1130,6 +1194,9 @@ export class EnvVaultClient {
       headers.authorization = `Bearer ${token}`;
     }
     if (options.body !== undefined) headers['content-type'] = 'application/json';
+    if (this.idempotencyKey && options.method && options.method !== 'GET') {
+      headers['idempotency-key'] = this.idempotencyKey;
+    }
 
     const response = await this.fetchImpl(`${this.baseUrl}${API_BASE_PATH}${path}`, {
       method: options.method ?? 'GET',
