@@ -101,6 +101,14 @@ enum SecretType {
   MULTILINE
 }
 
+/// How a secret version was created (history and rollback provenance).
+enum SecretVersionOrigin {
+  CREATE
+  UPDATE
+  IMPORT
+  ROLLBACK
+}
+
 enum EncryptionAlgorithm {
   AES_256_GCM
 }

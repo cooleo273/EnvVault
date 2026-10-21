@@ -46,6 +46,7 @@ export const ENVIRONMENT_PERMISSIONS: ReadonlySet<PermissionKey> = new Set<Permi
   'secret:write',
   'secret:delete',
   'secret:rollback',
+  'secret:export',
   'change_request:create',
   'change_request:review',
   'change_request:apply',
@@ -60,6 +61,7 @@ export const DATA_PLANE_PERMISSIONS: ReadonlySet<PermissionKey> = new Set<Permis
   'secret:write',
   'secret:delete',
   'secret:rollback',
+  'secret:export',
   'environment:deploy',
   'change_request:apply',
 ]);

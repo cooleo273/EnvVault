@@ -1,9 +1,23 @@
 'use server';
 
 import {
+  bulkActionInputSchema,
+  type BulkResult,
+  compareVersionsInputSchema,
   createSecretInputSchema,
+  exportInputSchema,
+  type ExportResult,
+  importCommitInputSchema,
+  type ImportPreview,
+  importPreviewInputSchema,
+  type ImportResult,
+  rollbackInputSchema,
+  type SecretSelection,
   type SecretType,
+  type SecretVersionPage,
+  SECRET_TYPES,
   updateSecretInputSchema,
+  type VersionComparison,
 } from '@envvault/shared';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -29,6 +43,7 @@ export type SecretActionResult<T = undefined> =
 
 /** Field the API error code belongs to, so the form can point at it. */
 const FIELD_FOR_CODE: Record<string, string> = {
+  SECRET_IMPORT_TOO_LARGE: 'content',
   SECRET_KEY_TAKEN: 'key',
   SECRET_VALUE_REQUIRED: 'value',
 };
@@ -186,5 +201,199 @@ export async function confirmPasswordAction(password: unknown): Promise<SecretAc
     return isApiError(error, 'STEP_UP_FAILED')
       ? { ...result, fieldErrors: { password: 'Incorrect password.' } }
       : result;
+  }
+}
+
+/* ----------------------------------------------------- Import and export */
+
+export async function previewImportAction(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  input: unknown,
+): Promise<SecretActionResult<ImportPreview>> {
+  const parsed = importPreviewInputSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    const preview = await withApi((api) =>
+      api.previewSecretImport(workspaceId, projectId, environmentId, parsed.data),
+    );
+    return { ok: true, data: preview };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function importAction(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  input: unknown,
+): Promise<SecretActionResult<ImportResult>> {
+  const parsed = importCommitInputSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    const result = await withApi((api) =>
+      api.importSecrets(workspaceId, projectId, environmentId, parsed.data),
+    );
+    refresh(workspaceId, projectId, environmentId);
+    return { ok: true, data: result };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * Decrypted file content for a browser download. Like a reveal, nothing is
+ * revalidated or cached; the caller turns it into a Blob and drops it.
+ */
+export async function exportAction(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  input: unknown,
+): Promise<SecretActionResult<ExportResult>> {
+  const parsed = exportInputSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    const result = await withApi((api) =>
+      api.exportSecrets(workspaceId, projectId, environmentId, parsed.data),
+    );
+    return { ok: true, data: result };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/* ------------------------------------------------------------ Bulk */
+
+const selectionQuerySchema = z.object({
+  q: z.string().max(100).optional(),
+  type: z.array(z.enum(SECRET_TYPES)).optional(),
+  category: z.array(z.string().max(64)).max(20).optional(),
+  tag: z.string().max(32).optional(),
+  status: z.enum(['active', 'deleted']).optional(),
+});
+
+export async function selectionAction(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  query: unknown,
+): Promise<SecretActionResult<SecretSelection>> {
+  const parsed = selectionQuerySchema.safeParse(query);
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    const selection = await withApi((api) =>
+      api.secretSelection(workspaceId, projectId, environmentId, parsed.data),
+    );
+    return { ok: true, data: selection };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function bulkAction(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  input: unknown,
+): Promise<SecretActionResult<BulkResult>> {
+  const parsed = bulkActionInputSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    const result = await withApi((api) =>
+      api.bulkSecrets(workspaceId, projectId, environmentId, parsed.data),
+    );
+    refresh(workspaceId, projectId, environmentId);
+    return { ok: true, data: result };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/* ------------------------------------------------------------ History */
+
+export async function listVersionsAction(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  secretId: string,
+  before?: number,
+): Promise<SecretActionResult<SecretVersionPage>> {
+  const cursor = z.number().int().min(1).optional().safeParse(before);
+  if (!cursor.success) return invalid(cursor.error);
+  try {
+    const page = await withApi((api) =>
+      api.listSecretVersions(workspaceId, projectId, environmentId, secretId, {
+        ...(cursor.data === undefined ? {} : { before: cursor.data }),
+        limit: 20,
+      }),
+    );
+    return { ok: true, data: page };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function revealVersionAction(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  secretId: string,
+  versionId: string,
+): Promise<SecretActionResult<{ value: string; version: number }>> {
+  const id = z.uuid().safeParse(versionId);
+  if (!id.success) return invalid(id.error);
+  try {
+    const revealed = await withApi((api) =>
+      api.revealSecretVersion(workspaceId, projectId, environmentId, secretId, id.data),
+    );
+    return { ok: true, data: { value: revealed.value, version: revealed.version } };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function compareVersionsAction(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  secretId: string,
+  input: unknown,
+): Promise<SecretActionResult<VersionComparison>> {
+  const parsed = compareVersionsInputSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    const comparison = await withApi((api) =>
+      api.compareSecretVersions(workspaceId, projectId, environmentId, secretId, parsed.data),
+    );
+    return { ok: true, data: comparison };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function rollbackAction(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  secretId: string,
+  input: unknown,
+): Promise<SecretActionResult<{ version: number | null; revision: number }>> {
+  const parsed = rollbackInputSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  try {
+    const summary = await withApi((api) =>
+      api.rollbackSecret(workspaceId, projectId, environmentId, secretId, parsed.data),
+    );
+    refresh(workspaceId, projectId, environmentId);
+    return {
+      ok: true,
+      data: { version: summary.currentVersion, revision: summary.revision },
+      message: `${summary.key} restored to an earlier value as version ${String(summary.currentVersion)}.`,
+    };
+  } catch (error) {
+    return failure(error);
   }
 }

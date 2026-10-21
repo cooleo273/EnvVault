@@ -12,6 +12,12 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import {
+  compareVersionsInputSchema,
+  type RevealedVersion,
+  rollbackInputSchema,
+  type SecretVersionPage,
+  secretVersionsQuerySchema,
+  type VersionComparison,
   type CreatedSecret,
   createSecretInputSchema,
   deleteSecretQuerySchema,
@@ -19,7 +25,6 @@ import {
   type RevealedSecret,
   type SecretList,
   type SecretSummary,
-  type SecretVersionInfo,
   updateSecretInputSchema,
 } from '@envvault/shared';
 import type { z } from 'zod';
@@ -35,6 +40,8 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
 import { requestIdOf } from '../common/request-id.util.js';
 import { UuidParam } from '../common/uuid-param.js';
 import type { SecretRequestContext } from './secret-authorization.service.js';
+import { SecretHistoryService } from './secret-history.service.js';
+import { SECRETS_ROUTE } from './secret-transfers.controller.js';
 import { SecretsService } from './secrets.service.js';
 
 function contextOf(
@@ -52,13 +59,13 @@ function contextOf(
  * SecretsService. Responses are never cacheable. Archived environments are
  * readable, not writable.
  */
-@Controller({
-  path: 'workspaces/:workspaceId/projects/:projectId/environments/:environmentId/secrets',
-  version: '1',
-})
+@Controller({ path: SECRETS_ROUTE, version: '1' })
 @UseInterceptors(NoStoreInterceptor)
 export class SecretsController {
-  constructor(private readonly secrets: SecretsService) {}
+  constructor(
+    private readonly secrets: SecretsService,
+    private readonly history: SecretHistoryService,
+  ) {}
 
   /** Metadata only: never decrypts. */
   @Get()
@@ -98,7 +105,7 @@ export class SecretsController {
     return this.secrets.get(contextOf(principal, environment, request), secretId);
   }
 
-  /** Version numbers, dates and authors. Never a previous value. */
+  /** Version history, newest first: metadata only, never values. */
   @Get(':secretId/versions')
   @RequireEnvironmentPermission('secret:list')
   @AllowArchived('workspace', 'project', 'environment')
@@ -106,9 +113,56 @@ export class SecretsController {
     @CurrentPrincipal() principal: Principal,
     @CurrentEnvironment() environment: AuthorizedEnvironment,
     @UuidParam('secretId') secretId: string,
+    @Query(new ZodValidationPipe(secretVersionsQuerySchema))
+    query: z.output<typeof secretVersionsQuerySchema>,
     @Req() request: AuthenticatedRequest,
-  ): Promise<SecretVersionInfo[]> {
-    return this.secrets.versions(contextOf(principal, environment, request), secretId);
+  ): Promise<SecretVersionPage> {
+    return this.history.list(contextOf(principal, environment, request), secretId, query);
+  }
+
+  /** Decrypts one historical value (audited, rate limited). */
+  @Post(':secretId/versions/:versionId/reveal')
+  @HttpCode(HttpStatus.OK)
+  @RequireEnvironmentPermission('secret:list')
+  @AllowArchived('workspace', 'project', 'environment')
+  revealVersion(
+    @CurrentPrincipal() principal: Principal,
+    @CurrentEnvironment() environment: AuthorizedEnvironment,
+    @UuidParam('secretId') secretId: string,
+    @UuidParam('versionId') versionId: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RevealedVersion> {
+    return this.history.reveal(contextOf(principal, environment, request), secretId, versionId);
+  }
+
+  /** Whether two versions hold the same value; returns no values. */
+  @Post(':secretId/versions/compare')
+  @HttpCode(HttpStatus.OK)
+  @RequireEnvironmentPermission('secret:list')
+  @AllowArchived('workspace', 'project', 'environment')
+  compare(
+    @CurrentPrincipal() principal: Principal,
+    @CurrentEnvironment() environment: AuthorizedEnvironment,
+    @UuidParam('secretId') secretId: string,
+    @Body(new ZodValidationPipe(compareVersionsInputSchema))
+    body: z.output<typeof compareVersionsInputSchema>,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<VersionComparison> {
+    return this.history.compare(contextOf(principal, environment, request), secretId, body);
+  }
+
+  /** Restores an earlier value as a new version. */
+  @Post(':secretId/rollback')
+  @HttpCode(HttpStatus.OK)
+  @RequireEnvironmentPermission('secret:list')
+  rollback(
+    @CurrentPrincipal() principal: Principal,
+    @CurrentEnvironment() environment: AuthorizedEnvironment,
+    @UuidParam('secretId') secretId: string,
+    @Body(new ZodValidationPipe(rollbackInputSchema)) body: z.output<typeof rollbackInputSchema>,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<SecretSummary> {
+    return this.history.rollback(contextOf(principal, environment, request), secretId, body);
   }
 
   @Patch(':secretId')

@@ -122,23 +122,33 @@ Examples:
   grants (cascade). Removing someone from a project removes their grants in that
   project.
 
-## 6. Secret permissions (Phase 3B)
+## 6. Secret permissions (Phase 3B and 3C)
 
 Secret routes are guarded by `@RequireEnvironmentPermission('secret:list')`; the data plane
 permission of each operation is checked by `SecretAuthorizationService`, which audits every
-refusal as `secret.access_denied`. The catalog names are unchanged:
+refusal as `secret.access_denied`. The catalog names are unchanged, plus `secret:export`:
 
-| Operation              | Permission      | Inherited into protected environments |
-| ---------------------- | --------------- | :-----------------------------------: |
-| List and read metadata | `secret:list`   |                  yes                  |
-| Reveal a value         | `secret:read`   |      no (explicit grant needed)       |
-| Create, update         | `secret:write`  |      no (explicit grant needed)       |
-| Delete, restore        | `secret:delete` |      no (explicit grant needed)       |
+| Operation                               | Permission                      | Inherited into protected environments |
+| --------------------------------------- | ------------------------------- | :-----------------------------------: |
+| List, read metadata and version history | `secret:list`                   |                  yes                  |
+| Reveal a current or historical value    | `secret:read`                   |      no (explicit grant needed)       |
+| Create, update, import                  | `secret:write`                  |      no (explicit grant needed)       |
+| Delete, restore (single and bulk)       | `secret:delete`                 |      no (explicit grant needed)       |
+| Roll back to an earlier version         | `secret:rollback`               |      no (explicit grant needed)       |
+| Bulk export (download)                  | `secret:export` + `secret:read` |      no (explicit grant needed)       |
 
-Revealing a value of a protected environment additionally needs a recent password step up
-(`STEP_UP_REQUIRED` otherwise). Workspace roles carry no `secret:*` permission at all, so an
-Owner or Admin who is not a project member cannot even list variables. See
-[secrets.md](secrets.md) for the full API.
+`secret:export` is separate on purpose: reading values one at a time never implies a bulk
+download. Phase 3C role changes: Project Admin gains `secret:export`; the Secret writer
+environment role gains `secret:rollback`; a new **Secret exporter** environment role holds
+`environment:read`, `secret:list`, `secret:read` and `secret:export`. Developers keep read and
+write only. Run `pnpm db:sync-catalog` to apply the changes to existing workspaces.
+
+Reading plaintext in a protected environment (reveals, historical reveals, comparisons,
+exports and value comparing import previews) additionally needs a recent password step up
+(`STEP_UP_REQUIRED` otherwise). Plaintext reads are also rate limited per user and per
+variable ([secrets.md, section 10](secrets.md#10-rate-limits)). Workspace roles carry no
+`secret:*` permission at all, so an Owner or Admin who is not a project member cannot even list
+variables. Bulk requests are refused whole if any id belongs to another environment.
 
 New permissions belong in `packages/shared/src/domain/permissions.ts`. Classify each as
 project, environment or data plane scoped in `access.ts`, then run `pnpm db:sync-catalog` to

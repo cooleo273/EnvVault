@@ -1,4 +1,5 @@
 import {
+  type EnvironmentSummary,
   PERMISSIONS,
   type PermissionKey,
   SECRET_SORTS,
@@ -45,13 +46,14 @@ export default async function EnvironmentPage({
 
   let secrets: SecretList | null = null;
   let missingKeys: string[] = [];
+  let environments: EnvironmentSummary[] = [];
   if (canList) {
     const page = Math.max(1, Number.parseInt(one(query.page) ?? '1', 10) || 1);
     const sort = SECRET_SORTS.find((s) => s === one(query.sort)) ?? 'name';
     const types = list(query.type).filter((t): t is SecretType =>
       (SECRET_TYPES as readonly string[]).includes(t),
     );
-    const [current, live] = await Promise.all([
+    const [current, live, siblings] = await Promise.all([
       withApi((api) =>
         api.listSecrets(workspaceId, projectId, environmentId, {
           page,
@@ -70,8 +72,13 @@ export default async function EnvironmentPage({
             api.listSecrets(workspaceId, projectId, environmentId, { pageSize: 100 }),
           ).catch(() => null)
         : Promise.resolve(null),
+      // Export can target another environment; the API decides which are allowed.
+      withApi((api) => api.listEnvironments(workspaceId, projectId, { pageSize: 200 }))
+        .then((r) => r.items)
+        .catch(() => [] as EnvironmentSummary[]),
     ]);
     secrets = current;
+    environments = siblings;
     if (live && live.total <= live.items.length) {
       const names = new Set(live.items.map((s) => s.key));
       missingKeys = environment.expectedKeys.map((k) => k.key).filter((k) => !names.has(k));
@@ -99,6 +106,12 @@ export default async function EnvironmentPage({
           isProtected={environment.isProtected}
           archived={environment.status === 'ARCHIVED'}
           missingKeys={missingKeys}
+          environmentName={environment.name}
+          environments={environments.map((e) => ({
+            id: e.id,
+            name: e.name,
+            isProtected: e.isProtected,
+          }))}
         />
       ) : (
         <section aria-labelledby="variables-heading" className="flex flex-col gap-2">

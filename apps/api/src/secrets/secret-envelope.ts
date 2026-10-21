@@ -34,7 +34,7 @@ export function versionRowFromEnvelope(
   versionId: string,
   encryptionKeyId: string,
   envelope: SecretEnvelope,
-): NewSecretVersion {
+): Omit<NewSecretVersion, 'origin' | 'changeReason' | 'restoredFromVersionId'> {
   return {
     id: versionId,
     encryptionKeyId,

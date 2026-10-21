@@ -11,6 +11,7 @@ import { ProjectMemberRepository } from './project-member.repository.js';
 import { ProjectRepository } from './project.repository.js';
 import { TemplateRepository } from './template.repository.js';
 import { RoleRepository } from './role.repository.js';
+import { SecretBulkRepository } from './secret-bulk.repository.js';
 import { EncryptionKeyRepository, SecretRepository } from './secret.repository.js';
 import { UserRepository } from './user.repository.js';
 import { WorkspaceRepository } from './workspace.repository.js';
@@ -72,8 +73,16 @@ export {
   type SecretMetadataPatch,
   type SecretRecord,
   type SecretSort,
+  type SecretVersionRecord,
   type StoredSecretVersion,
 } from './secret.repository.js';
+export {
+  SecretBulkRepository,
+  type BulkPatch,
+  type SecretFilters,
+  type SecretState,
+  type ValueOverwrite,
+} from './secret-bulk.repository.js';
 export { TemplateRepository, type TemplateRecord } from './template.repository.js';
 export { UserRepository, type UserProfile, type VerifiedIdentity } from './user.repository.js';
 export {
@@ -109,6 +118,7 @@ export function createRepositories(db: DbClient) {
     environments: new EnvironmentRepository(db),
     encryptionKeys: new EncryptionKeyRepository(db),
     secrets: new SecretRepository(db),
+    secretBulk: new SecretBulkRepository(db),
     users: new UserRepository(db),
     workspaces: new WorkspaceRepository(db),
   };

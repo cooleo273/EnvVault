@@ -19,6 +19,7 @@ const ALL = readdirSync(MIGRATIONS_DIR)
   .filter((name) => /^\d{14}_/.test(name))
   .sort();
 const SECRETS_CRUD = '20261021090000_secrets_crud';
+const HISTORY = '20261022090000_secret_version_history';
 
 function sibling(url: string, suffix: string): string {
   const parsed = new URL(url);
@@ -115,10 +116,12 @@ async function loadLegacyData(db: PrismaClient): Promise<void> {
         `INSERT INTO secrets (id, workspace_id, project_id, environment_id, key, type, description, created_by_user_id, updated_by_user_id, updated_at, deleted_at)
          VALUES ('0190a000-0000-7000-8000-00000000010${String(index)}', '${IDS.workspace}', '${IDS.project}', '${IDS.environment}', 'K_${type}', '${type}', 'legacy ${type}', '${IDS.user}', '${IDS.user}', now(), ${type === 'PASSWORD' ? 'now()' : 'NULL'})`,
     ),
-    `UPDATE secrets SET latest_version_number = 1 WHERE key = 'K_API_KEY'`,
+    `UPDATE secrets SET latest_version_number = 2 WHERE key = 'K_API_KEY'`,
     `INSERT INTO secret_versions (id, workspace_id, secret_id, version_number, ciphertext, iv, auth_tag, encrypted_data_key, encryption_key_id, kms_key_version, created_by_user_id)
      VALUES ('0190a000-0000-7000-8000-000000000201', '${IDS.workspace}', '0190a000-0000-7000-8000-000000000101', 1, decode('${ciphertext.toString('hex')}', 'hex'), decode('${'00'.repeat(12)}', 'hex'), decode('${'11'.repeat(16)}', 'hex'), decode('${'22'.repeat(61)}', 'hex'), '${IDS.key}', '1', '${IDS.user}')`,
-    `UPDATE secrets SET current_version_id = '0190a000-0000-7000-8000-000000000201' WHERE key = 'K_API_KEY'`,
+    `INSERT INTO secret_versions (id, workspace_id, secret_id, version_number, ciphertext, iv, auth_tag, encrypted_data_key, encryption_key_id, kms_key_version, created_by_user_id)
+     VALUES ('0190a000-0000-7000-8000-000000000202', '${IDS.workspace}', '0190a000-0000-7000-8000-000000000101', 2, decode('${ciphertext.toString('hex')}ff', 'hex'), decode('${'33'.repeat(12)}', 'hex'), decode('${'44'.repeat(16)}', 'hex'), decode('${'55'.repeat(61)}', 'hex'), '${IDS.key}', '1', '${IDS.user}')`,
+    `UPDATE secrets SET current_version_id = '0190a000-0000-7000-8000-000000000202' WHERE key = 'K_API_KEY'`,
     `INSERT INTO change_requests (id, workspace_id, project_id, environment_id, title, required_approvals, requested_by_id, updated_at)
      VALUES ('${IDS.changeRequest}', '${IDS.workspace}', '${IDS.project}', '${IDS.environment}', 'Legacy change', 0, '${IDS.user}', now())`,
     `INSERT INTO change_request_items (id, workspace_id, change_request_id, operation, secret_id, secret_key, secret_type)
@@ -142,6 +145,7 @@ describe(`migration ${SECRETS_CRUD}`, () => {
 
   beforeAll(() => {
     expect(before.length).toBeGreaterThan(0);
+    expect(ALL).toContain(HISTORY);
   });
 
   afterAll(async () => {
@@ -221,7 +225,7 @@ describe(`migration ${SECRETS_CRUD}`, () => {
       });
     }
     expect(secrets.find((s) => s.key === 'K_API_KEY')?.current_version_id).toBe(
-      '0190a000-0000-7000-8000-000000000201',
+      '0190a000-0000-7000-8000-000000000202',
     );
     // Versions are not touched at all.
     expect(
@@ -246,5 +250,21 @@ describe(`migration ${SECRETS_CRUD}`, () => {
     expect(Number(functions[0]?.n)).toBe(0);
     // Every remaining migration still applies on top of the converted data.
     deploy(ALL);
+    // 20261022090000_secret_version_history: provenance backfilled, bytes untouched.
+    const history = await migrated.$queryRawUnsafe<
+      { id: string; origin: string; change_reason: string | null; ciphertext: Buffer }[]
+    >(
+      `SELECT id, origin::text AS origin, change_reason, ciphertext FROM secret_versions ORDER BY version_number`,
+    );
+    expect(history.map((v) => [v.origin, v.change_reason])).toEqual([
+      ['CREATE', null],
+      ['UPDATE', null],
+    ]);
+    expect(history.map((v) => Buffer.from(v.ciphertext).toString('hex'))).toEqual(
+      versionBefore.map((v) => Buffer.from(v.ciphertext as Uint8Array).toString('hex')),
+    );
+    await expect(
+      migrated.$executeRawUnsafe(`UPDATE secret_versions SET origin = 'ROLLBACK'`),
+    ).rejects.toThrow(/immutable/);
   });
 });

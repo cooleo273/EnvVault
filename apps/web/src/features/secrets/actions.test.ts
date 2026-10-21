@@ -14,6 +14,9 @@ const api = vi.hoisted(() => ({
   restoreSecret: vi.fn(),
   revealSecret: vi.fn(),
   stepUp: vi.fn(),
+  exportSecrets: vi.fn(),
+  importSecrets: vi.fn(),
+  previewSecretImport: vi.fn(),
 }));
 const revalidatePath = vi.hoisted(() => vi.fn());
 
@@ -165,5 +168,34 @@ describe('delete, restore and step up', () => {
       ok: false,
       fieldErrors: { password: 'Incorrect password.' },
     });
+  });
+});
+
+describe('import and export actions', () => {
+  it('exports without revalidating any page', async () => {
+    api.exportSecrets.mockResolvedValue({ filename: '.env.dev', content: SYNTHETIC });
+    await expect(actions.exportAction(W, P, E, { format: 'json' })).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(revalidatePath).not.toHaveBeenCalled();
+    expect(await actions.exportAction(W, P, E, { format: 'xml' })).toMatchObject({ ok: false });
+  });
+
+  it('imports and refreshes, and maps per key rejections onto fields', async () => {
+    api.importSecrets.mockResolvedValue({ created: 1, updated: 0, secretIds: [S] });
+    const input = { content: `A=${SYNTHETIC}`, items: [{ action: 'create', key: 'A' }] };
+    await expect(actions.importAction(W, P, E, input)).resolves.toMatchObject({ ok: true });
+    expect(revalidatePath).toHaveBeenCalled();
+    api.importSecrets.mockRejectedValue(
+      apiError(409, 'SECRET_IMPORT_REJECTED', [
+        { path: 'A', message: 'A variable with this name exists now' },
+      ]),
+    );
+    const rejected = await actions.importAction(W, P, E, input);
+    expect(rejected).toMatchObject({
+      ok: false,
+      fieldErrors: { A: 'A variable with this name exists now' },
+    });
+    expect(JSON.stringify(rejected)).not.toContain(SYNTHETIC);
   });
 });

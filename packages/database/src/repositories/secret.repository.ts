@@ -1,9 +1,11 @@
 import type { DbClient } from '../client.js';
 import type { Prisma } from '../generated/prisma/client.js';
-import type { SecretType } from '../generated/prisma/enums.js';
+import type { SecretType, SecretVersionOrigin } from '../generated/prisma/enums.js';
 import type { EnvironmentScope, WorkspaceScope } from '../scope.js';
 
 type UserRef = { displayName: string | null; email: string } | null;
+
+const userRef = { select: { displayName: true, email: true } } as const;
 
 /** Metadata of one variable. Never contains a value or ciphertext. */
 export interface SecretRecord {
@@ -52,6 +54,108 @@ export interface NewSecretVersion {
   iv: Uint8Array;
   authTag: Uint8Array;
   encryptedDataKey: Uint8Array;
+  origin: SecretVersionOrigin;
+  changeReason?: string | null | undefined;
+  /** Required for ROLLBACK versions: the restored version of the same secret. */
+  restoredFromVersionId?: string | null | undefined;
+}
+
+/** Metadata of one version. Never selects encrypted columns. */
+export interface SecretVersionRecord {
+  id: string;
+  versionNumber: number;
+  isCurrent: boolean;
+  origin: SecretVersionOrigin;
+  changeReason: string | null;
+  restoredFromVersion: number | null;
+  keyVersion: number | null;
+  createdAt: Date;
+  createdBy: UserRef;
+}
+
+export const storedVersionSelect = {
+  id: true,
+  versionNumber: true,
+  envelopeVersion: true,
+  algorithm: true,
+  kmsKeyVersion: true,
+  ciphertext: true,
+  iv: true,
+  authTag: true,
+  encryptedDataKey: true,
+  encryptionKey: { select: { kmsProvider: true, kmsKeyRef: true } },
+} as const satisfies Prisma.SecretVersionSelect;
+
+type StoredVersionRow = Prisma.SecretVersionGetPayload<{ select: typeof storedVersionSelect }>;
+
+export function toStoredVersion(version: StoredVersionRow): StoredSecretVersion {
+  return {
+    versionId: version.id,
+    versionNumber: version.versionNumber,
+    envelopeVersion: version.envelopeVersion,
+    algorithm: version.algorithm,
+    kmsProvider: version.encryptionKey.kmsProvider,
+    kmsKeyRef: version.encryptionKey.kmsKeyRef,
+    kmsKeyVersion: version.kmsKeyVersion,
+    ciphertext: Buffer.from(version.ciphertext),
+    iv: Buffer.from(version.iv),
+    authTag: Buffer.from(version.authTag),
+    encryptedDataKey: Buffer.from(version.encryptedDataKey),
+  };
+}
+
+const versionMetaSelect = {
+  id: true,
+  versionNumber: true,
+  origin: true,
+  changeReason: true,
+  kmsKeyVersion: true,
+  createdAt: true,
+  createdByUser: userRef,
+  restoredFrom: { select: { versionNumber: true } },
+} as const satisfies Prisma.SecretVersionSelect;
+
+function toVersionRecord(
+  row: Prisma.SecretVersionGetPayload<{ select: typeof versionMetaSelect }>,
+  currentVersionId: string | null,
+): SecretVersionRecord {
+  const { createdByUser, restoredFrom, kmsKeyVersion, ...rest } = row;
+  return {
+    ...rest,
+    isCurrent: row.id === currentVersionId,
+    restoredFromVersion: restoredFrom?.versionNumber ?? null,
+    keyVersion: kmsKeyVersion && /^\d+$/.test(kmsKeyVersion) ? Number(kmsKeyVersion) : null,
+    createdBy: createdByUser,
+  };
+}
+
+/** Insert data for one version row (shared by single and bulk writes). */
+export function versionData(
+  workspaceId: string,
+  secretId: string,
+  versionNumber: number,
+  version: NewSecretVersion,
+  userId: string,
+): Prisma.SecretVersionCreateManyInput {
+  const reason = version.changeReason?.trim();
+  return {
+    id: version.id,
+    workspaceId,
+    secretId,
+    versionNumber,
+    ciphertext: new Uint8Array(version.ciphertext),
+    iv: new Uint8Array(version.iv),
+    authTag: new Uint8Array(version.authTag),
+    encryptedDataKey: new Uint8Array(version.encryptedDataKey),
+    algorithm: 'AES_256_GCM',
+    envelopeVersion: version.envelopeVersion,
+    encryptionKeyId: version.encryptionKeyId,
+    kmsKeyVersion: version.kmsKeyVersion,
+    origin: version.origin,
+    changeReason: reason === undefined || reason === '' ? null : reason,
+    restoredFromVersionId: version.restoredFromVersionId ?? null,
+    createdByUserId: userId,
+  };
 }
 
 export interface SecretMetadataPatch {
@@ -87,8 +191,6 @@ export interface SecretListQuery {
   skip: number;
   take: number;
 }
-
-const userRef = { select: { displayName: true, email: true } } as const;
 
 const recordSelect = {
   id: true,
@@ -381,64 +483,83 @@ export class SecretRepository {
   ): Promise<StoredSecretVersion | null> {
     const row = await this.db.secret.findFirst({
       where: { id: secretId, ...scopeWhere(scope), deletedAt: null },
-      select: {
-        currentVersion: {
-          select: {
-            id: true,
-            versionNumber: true,
-            envelopeVersion: true,
-            algorithm: true,
-            kmsKeyVersion: true,
-            ciphertext: true,
-            iv: true,
-            authTag: true,
-            encryptedDataKey: true,
-            encryptionKey: { select: { kmsProvider: true, kmsKeyRef: true } },
-          },
-        },
-      },
+      select: { currentVersion: { select: storedVersionSelect } },
     });
-    const version = row?.currentVersion;
-    if (!version) return null;
-    return {
-      versionId: version.id,
-      versionNumber: version.versionNumber,
-      envelopeVersion: version.envelopeVersion,
-      algorithm: version.algorithm,
-      kmsProvider: version.encryptionKey.kmsProvider,
-      kmsKeyRef: version.encryptionKey.kmsKeyRef,
-      kmsKeyVersion: version.kmsKeyVersion,
-      ciphertext: Buffer.from(version.ciphertext),
-      iv: Buffer.from(version.iv),
-      authTag: Buffer.from(version.authTag),
-      encryptedDataKey: Buffer.from(version.encryptedDataKey),
-    };
+    return row?.currentVersion ? toStoredVersion(row.currentVersion) : null;
   }
 
-  /** Version metadata, newest first. Never selects encrypted columns. */
+  /**
+   * One historical version's encrypted columns, if it belongs to this secret
+   * in this environment. Deleted variables are excluded.
+   */
+  async version(
+    scope: EnvironmentScope,
+    secretId: string,
+    versionId: string,
+  ): Promise<StoredSecretVersion | null> {
+    const row = await this.db.secretVersion.findFirst({
+      where: {
+        id: versionId,
+        secretId,
+        workspaceId: scope.workspaceId,
+        secret: { ...scopeWhere(scope), deletedAt: null },
+      },
+      select: storedVersionSelect,
+    });
+    return row ? toStoredVersion(row) : null;
+  }
+
+  /**
+   * Version metadata, newest first, with keyset pagination on the version
+   * number (`before`). Never selects encrypted columns.
+   */
   async listVersions(
     scope: EnvironmentScope,
     secretId: string,
-    limit = 100,
-  ): Promise<
-    { id: string; versionNumber: number; isCurrent: boolean; createdAt: Date; createdBy: UserRef }[]
-  > {
+    options: { before?: number | undefined; limit: number } = { limit: 100 },
+  ): Promise<{ items: SecretVersionRecord[]; total: number; nextBefore: number | null }> {
+    const secret = await this.db.secret.findFirst({
+      where: { id: secretId, ...scopeWhere(scope) },
+      select: { currentVersionId: true },
+    });
+    if (!secret) return { items: [], total: 0, nextBefore: null };
+    const where = { secretId, workspaceId: scope.workspaceId };
+    const [rows, total] = await Promise.all([
+      this.db.secretVersion.findMany({
+        where: {
+          ...where,
+          ...(options.before === undefined ? {} : { versionNumber: { lt: options.before } }),
+        },
+        orderBy: { versionNumber: 'desc' },
+        take: options.limit + 1,
+        select: versionMetaSelect,
+      }),
+      this.db.secretVersion.count({ where }),
+    ]);
+    const page = rows.slice(0, options.limit);
+    return {
+      items: page.map((row) => toVersionRecord(row, secret.currentVersionId)),
+      total,
+      nextBefore: rows.length > options.limit ? (page.at(-1)?.versionNumber ?? null) : null,
+    };
+  }
+
+  /** Metadata of specific versions of one secret in this environment. */
+  async versionDetails(
+    scope: EnvironmentScope,
+    secretId: string,
+    versionIds: readonly string[],
+  ): Promise<SecretVersionRecord[]> {
     const secret = await this.db.secret.findFirst({
       where: { id: secretId, ...scopeWhere(scope) },
       select: { currentVersionId: true },
     });
     if (!secret) return [];
     const rows = await this.db.secretVersion.findMany({
-      where: { secretId, workspaceId: scope.workspaceId },
-      orderBy: { versionNumber: 'desc' },
-      take: limit,
-      select: { id: true, versionNumber: true, createdAt: true, createdByUser: userRef },
+      where: { secretId, workspaceId: scope.workspaceId, id: { in: [...versionIds] } },
+      select: versionMetaSelect,
     });
-    return rows.map(({ createdByUser, ...row }) => ({
-      ...row,
-      isCurrent: row.id === secret.currentVersionId,
-      createdBy: createdByUser,
-    }));
+    return rows.map((row) => toVersionRecord(row, secret.currentVersionId));
   }
 
   /** Live variables in the environment (for the expected key overview). */
@@ -454,21 +575,7 @@ export class SecretRepository {
     userId: string,
   ): Promise<void> {
     await this.db.secretVersion.create({
-      data: {
-        id: version.id,
-        workspaceId: scope.workspaceId,
-        secretId,
-        versionNumber,
-        ciphertext: new Uint8Array(version.ciphertext),
-        iv: new Uint8Array(version.iv),
-        authTag: new Uint8Array(version.authTag),
-        encryptedDataKey: new Uint8Array(version.encryptedDataKey),
-        algorithm: 'AES_256_GCM',
-        envelopeVersion: version.envelopeVersion,
-        encryptionKeyId: version.encryptionKeyId,
-        kmsKeyVersion: version.kmsKeyVersion,
-        createdByUserId: userId,
-      },
+      data: versionData(scope.workspaceId, secretId, versionNumber, version, userId),
       select: { id: true },
     });
   }

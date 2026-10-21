@@ -12,7 +12,7 @@ import {
   revealedSecretSchema,
   secretListSchema,
   secretSummarySchema,
-  secretVersionSchema,
+  secretVersionPageSchema,
   workspaceMemberSchema,
   workspaceSummarySchema,
 } from '@envvault/shared';
@@ -347,10 +347,10 @@ describe('updates and versions', () => {
       version: 2,
     });
 
-    const versions = await ok(
+    const { items: versions } = await ok(
       call(w.owner, 'get', `${path}/${id}/versions`),
       200,
-      z.array(secretVersionSchema),
+      secretVersionPageSchema,
     );
     expect(versions.map((v) => [v.version, v.isCurrent])).toEqual([
       [2, true],

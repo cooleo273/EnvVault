@@ -4,6 +4,15 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const actions = vi.hoisted(() => ({
+  selectionAction: vi.fn(),
+  bulkAction: vi.fn(),
+  previewImportAction: vi.fn(),
+  importAction: vi.fn(),
+  exportAction: vi.fn(),
+  listVersionsAction: vi.fn(),
+  revealVersionAction: vi.fn(),
+  compareVersionsAction: vi.fn(),
+  rollbackAction: vi.fn(),
   createSecretAction: vi.fn(),
   updateSecretAction: vi.fn(),
   deleteSecretAction: vi.fn(),
@@ -80,6 +89,8 @@ function renderPanel(
       isProtected={options.isProtected ?? false}
       archived={options.archived ?? false}
       missingKeys={options.missingKeys ?? []}
+      environmentName="Development"
+      environments={[]}
     />,
   );
 }
@@ -156,6 +167,8 @@ describe('VariablesPanel', () => {
         isProtected={false}
         archived={false}
         missingKeys={[]}
+        environmentName="Development"
+        environments={[]}
       />,
     );
     expect(screen.queryByText(SYNTHETIC)).not.toBeInTheDocument();
@@ -326,6 +339,8 @@ describe('VariablesPanel', () => {
         isProtected={false}
         archived={false}
         missingKeys={[]}
+        environmentName="Development"
+        environments={[]}
       />,
     );
     expect(screen.queryByRole('button', { name: /Reveal/ })).not.toBeInTheDocument();
@@ -374,6 +389,8 @@ describe('VariablesPanel', () => {
         isProtected={false}
         archived={false}
         missingKeys={[]}
+        environmentName="Development"
+        environments={[]}
       />,
     );
     expect(screen.getByText('No matching variables')).toBeInTheDocument();
@@ -387,6 +404,8 @@ describe('VariablesPanel', () => {
         isProtected={false}
         archived={false}
         missingKeys={[]}
+        environmentName="Development"
+        environments={[]}
       />,
     );
     expect(screen.getByText('Variables could not be loaded')).toBeInTheDocument();
@@ -404,5 +423,39 @@ describe('VariablesPanel', () => {
     await user.click(screen.getByRole('button', { name: 'REDIS_URL' }));
     const dialog = await screen.findByRole('dialog', { name: 'Add variable' });
     expect(within(dialog).getByLabelText(/^Name/)).toHaveValue('REDIS_URL');
+  });
+
+  it('selects rows for bulk actions and shows import, export and history controls', async () => {
+    const user = userEvent.setup();
+    actions.listVersionsAction.mockResolvedValue({
+      ok: true,
+      data: { items: [], total: 0, nextBefore: null },
+    });
+    renderPanel({
+      permissions: [...ALL, 'secret:export', 'secret:rollback'],
+      list: listOf([
+        secret(),
+        secret({ id: '0199f000-0000-7000-8000-000000000002', key: 'REDIS_URL' }),
+      ]),
+    });
+    expect(screen.getByRole('button', { name: 'Import' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export' })).toBeInTheDocument();
+    await user.click(screen.getByLabelText('Select all visible variables'));
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('2 selected');
+    await user.click(screen.getByLabelText('Select REDIS_URL'));
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('1 selected');
+    await user.click(screen.getByRole('button', { name: 'Clear selection' }));
+    expect(screen.queryByRole('region', { name: 'Bulk actions' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Actions for DATABASE_URL' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'History' }));
+    expect(
+      await screen.findByRole('dialog', { name: 'History of DATABASE_URL' }),
+    ).toBeInTheDocument();
+  });
+
+  it('hides export without secret:export even when values can be read', () => {
+    renderPanel({ permissions: ALL });
+    expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
   });
 });

@@ -127,10 +127,13 @@ export const updateSecretInputSchema = z
     category: secretCategorySchema.nullable().optional(),
     tags: tagsSchema.optional(),
     isRequired: z.boolean().optional(),
+    /** Stored with the new version when `value` is given; never a secret itself. */
+    changeReason: z.string().trim().max(500, 'Use at most 500 characters').optional(),
   })
   .superRefine(checkValue)
   .refine(
-    ({ expectedRevision: _ignored, ...rest }) => Object.values(rest).some((v) => v !== undefined),
+    ({ expectedRevision: _revision, changeReason: _reason, ...rest }) =>
+      Object.values(rest).some((v) => v !== undefined),
     { message: 'Nothing to update' },
   );
 export type UpdateSecretInput = z.input<typeof updateSecretInputSchema>;
@@ -225,16 +228,6 @@ export const revealedSecretSchema = z.object({
   value: z.string(),
 });
 export type RevealedSecret = z.infer<typeof revealedSecretSchema>;
-
-/** Version metadata only: never a previous value. */
-export const secretVersionSchema = z.object({
-  id: z.uuid(),
-  version: z.number().int(),
-  isCurrent: z.boolean(),
-  createdAt: z.iso.datetime(),
-  createdBy: userRefSchema,
-});
-export type SecretVersionInfo = z.infer<typeof secretVersionSchema>;
 
 export const createdSecretSchema = z.object({ id: z.uuid(), revision: z.number().int() });
 export type CreatedSecret = z.infer<typeof createdSecretSchema>;

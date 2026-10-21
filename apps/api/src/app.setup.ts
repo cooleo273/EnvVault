@@ -1,6 +1,7 @@
 import { VersioningType } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { API_DEFAULT_VERSION, API_PREFIX, REQUEST_ID_HEADER } from '@envvault/shared';
+import { json } from 'express';
 import helmet from 'helmet';
 import type { Env } from './config/env.js';
 
@@ -17,6 +18,13 @@ export function configureApp(app: NestExpressApplication, env: Env): NestExpress
   }
 
   app.use(helmet());
+  // Imports carry a whole .env file. Only these two routes get a larger
+  // limit (JSON escaping can double the size); the parser below skips
+  // bodies that are already parsed.
+  app.use(
+    `/${API_PREFIX}/v${API_DEFAULT_VERSION}/workspaces/:workspaceId/projects/:projectId/environments/:environmentId/secrets/import`,
+    json({ limit: env.SECRET_IMPORT_MAX_BYTES * 2 + 16 * 1024 }),
+  );
   app.useBodyParser('json', { limit: MAX_JSON_BODY });
 
   app.enableCors({

@@ -135,9 +135,11 @@ OpenSSL details, and never carry a `cause`.
 - `KeyManagementService`: `isConfigured`, `status()` (key metadata only) and
   `provider()`.
 
-None of this is reachable over HTTP directly. `SecretsService` (`apps/api/src/secrets`) is
-the only caller: it encrypts after authorization and decrypts only in the reveal route,
-after the permission and step up checks.
+None of this is reachable over HTTP directly. `SecretVault` (`apps/api/src/secrets`) is the
+only caller and every secret service goes through it: it builds the context, seals values
+into new versions, opens stored versions (auditing failures by error code) and sanitises
+database errors. Values are decrypted only after the permission, step up and rate limit
+checks of the route. There is no second encryption mechanism and no plaintext fallback.
 
 ## 7. Lifecycle of a secret version
 
@@ -158,7 +160,15 @@ after the permission and step up checks.
    problems map to `503 ENCRYPTION_UNAVAILABLE`; authentication or format failures map to
    `500 SECRET_INTEGRITY_ERROR` and a `secret.decryption_failed` event. Neither response says
    which check failed.
-6. Rotation rewraps DEKs without touching `ciphertext`, `iv` or `auth_tag` (see
+6. **Imports** encrypt every selected value the same way (one DEK per value, origin `IMPORT`)
+   before their single transaction starts; a failure leaves the database untouched.
+7. **Rollbacks** decrypt the chosen historical version on the server, then encrypt the value
+   again with a fresh DEK under the **active** KEK as a new version (origin `ROLLBACK`). The
+   source version is not modified, and a rollback after a key rotation produces a version
+   wrapped by the new key version. Old versions keep decrypting with their own key version.
+8. **Comparisons** (version compare, import preview) decrypt on the server and compare with
+   `crypto.timingSafeEqual`; only the result leaves the server.
+9. Rotation rewraps DEKs without touching `ciphertext`, `iv` or `auth_tag` (see
    [key-management.md](key-management.md)). `kms_key_version` is the column a rewrap job
    updates; no such job runs yet.
 

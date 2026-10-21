@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path';
+import { SECRET_TRANSFER_CEILINGS, SECRET_TRANSFER_DEFAULTS } from '@envvault/shared';
 import { z } from 'zod';
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
@@ -96,6 +97,45 @@ export const envSchema = z
     ENCRYPTION_KEYRING_FILE: z.string().min(1).optional(),
     /** Alternative to the file: base64 of the keyring JSON (server-side secret). */
     ENCRYPTION_LOCAL_KEYRING: z.string().min(1).optional(),
+
+    /*
+     * Bulk secret operations (docs/secrets.md). Each limit may be lowered,
+     * never raised past the ceiling in @envvault/shared.
+     */
+    SECRET_IMPORT_MAX_BYTES: z.coerce
+      .number()
+      .int()
+      .min(1024)
+      .max(SECRET_TRANSFER_CEILINGS.importBytes)
+      .default(SECRET_TRANSFER_DEFAULTS.importBytes),
+    SECRET_IMPORT_MAX_ENTRIES: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(SECRET_TRANSFER_CEILINGS.importEntries)
+      .default(SECRET_TRANSFER_DEFAULTS.importEntries),
+    SECRET_BULK_MAX_ITEMS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(SECRET_TRANSFER_CEILINGS.bulkItems)
+      .default(SECRET_TRANSFER_DEFAULTS.bulkItems),
+    SECRET_EXPORT_MAX_ITEMS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(SECRET_TRANSFER_CEILINGS.exportItems)
+      .default(SECRET_TRANSFER_DEFAULTS.exportItems),
+    /*
+     * Per user limits for value reads, per minute. Kept in the throttler's
+     * storage, which is in memory and per instance unless a shared store is
+     * configured.
+     */
+    SECRET_REVEAL_RATE_LIMIT: z.coerce.number().int().min(1).max(10_000).default(60),
+    /** Reveals of one variable (any of its versions) by one user, per minute. */
+    SECRET_REVEAL_RESOURCE_RATE_LIMIT: z.coerce.number().int().min(1).max(10_000).default(20),
+    /** Exports and value comparing import previews by one user, per minute. */
+    SECRET_BULK_READ_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(10),
   })
   .superRefine((env, ctx) => {
     // Keys must come from the same Neon Auth branch as the issuer: mixing a

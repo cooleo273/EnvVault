@@ -9,8 +9,29 @@ import {
   secretListSchema,
   type SecretSummary,
   secretSummarySchema,
-  type SecretVersionInfo,
-  secretVersionSchema,
+  type BulkActionInput,
+  type BulkResult,
+  bulkResultSchema,
+  type CompareVersionsInput,
+  type ExportInput,
+  type ExportResult,
+  exportResultSchema,
+  type ImportCommitInput,
+  type ImportPreview,
+  type ImportPreviewInput,
+  importPreviewSchema,
+  type ImportResult,
+  importResultSchema,
+  type RevealedVersion,
+  revealedVersionSchema,
+  type RollbackInput,
+  type SecretSelection,
+  secretSelectionSchema,
+  type SecretVersionPage,
+  secretVersionPageSchema,
+  type SecretVersionsQuery,
+  type VersionComparison,
+  versionComparisonSchema,
   type UpdateSecretInput,
   type ActivityPage,
   activityPageSchema,
@@ -753,14 +774,131 @@ export class EnvVaultClient {
     });
   }
 
+  /** Version history (metadata only), newest first; pass `before` from `nextBefore` for older ones. */
   listSecretVersions(
     workspaceId: string,
     projectId: string,
     environmentId: string,
     secretId: string,
-  ): Promise<SecretVersionInfo[]> {
-    return this.request(`${secretPath(workspaceId, projectId, environmentId, secretId)}/versions`, {
-      schema: z.array(secretVersionSchema),
+    query: SecretVersionsQuery = {},
+  ): Promise<SecretVersionPage> {
+    return this.request(
+      `${secretPath(workspaceId, projectId, environmentId, secretId)}/versions${toQuery({ ...query })}`,
+      { schema: secretVersionPageSchema },
+    );
+  }
+
+  /** Decrypts one historical value (audited; protected environments need a step up). */
+  revealSecretVersion(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+    versionId: string,
+  ): Promise<RevealedVersion> {
+    return this.request(
+      `${secretPath(workspaceId, projectId, environmentId, secretId)}/versions/${encodeURIComponent(versionId)}/reveal`,
+      { method: 'POST', schema: revealedVersionSchema },
+    );
+  }
+
+  compareSecretVersions(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+    input: CompareVersionsInput,
+  ): Promise<VersionComparison> {
+    return this.request(
+      `${secretPath(workspaceId, projectId, environmentId, secretId)}/versions/compare`,
+      { method: 'POST', body: input, schema: versionComparisonSchema },
+    );
+  }
+
+  /** Restores an earlier value as a new version. */
+  rollbackSecret(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+    input: RollbackInput,
+  ): Promise<SecretSummary> {
+    return this.request(`${secretPath(workspaceId, projectId, environmentId, secretId)}/rollback`, {
+      method: 'POST',
+      body: input,
+      schema: secretSummarySchema,
+    });
+  }
+
+  /** Parses .env content on the server and reports what an import would do (no values). */
+  previewSecretImport(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: ImportPreviewInput,
+  ): Promise<ImportPreview> {
+    return this.request(`${secretsPath(workspaceId, projectId, environmentId)}/import/preview`, {
+      method: 'POST',
+      body: input,
+      schema: importPreviewSchema,
+    });
+  }
+
+  importSecrets(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: ImportCommitInput,
+  ): Promise<ImportResult> {
+    return this.request(`${secretsPath(workspaceId, projectId, environmentId)}/import`, {
+      method: 'POST',
+      body: input,
+      schema: importResultSchema,
+    });
+  }
+
+  /** Decrypted file content. Never log, cache or persist the result. */
+  exportSecrets(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: ExportInput,
+  ): Promise<ExportResult> {
+    return this.request(`${secretsPath(workspaceId, projectId, environmentId)}/export`, {
+      method: 'POST',
+      body: input,
+      schema: exportResultSchema,
+    });
+  }
+
+  /** Ids and revisions of every variable matching the filters (for bulk actions). */
+  secretSelection(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    query: ListSecretsQuery = {},
+  ): Promise<SecretSelection> {
+    const { type, category, ...rest } = query;
+    return this.request(
+      `${secretsPath(workspaceId, projectId, environmentId)}/selection${toQuery({
+        ...rest,
+        type: type?.join(','),
+        category: category?.join(','),
+      })}`,
+      { schema: secretSelectionSchema },
+    );
+  }
+
+  bulkSecrets(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: BulkActionInput,
+  ): Promise<BulkResult> {
+    return this.request(`${secretsPath(workspaceId, projectId, environmentId)}/bulk`, {
+      method: 'POST',
+      body: input,
+      schema: bulkResultSchema,
     });
   }
 

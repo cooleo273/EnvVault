@@ -53,17 +53,21 @@ export class SecretAuthorizationService {
    * Values of protected environments are revealed only after a recent
    * password confirmation (step up), in addition to the permission.
    */
-  async requireStepUpIfProtected(ctx: SecretRequestContext, secretId: string): Promise<void> {
+  async requireStepUpIfProtected(
+    ctx: SecretRequestContext,
+    secretId: string | null,
+    attempted = 'secret.revealed',
+  ): Promise<void> {
     if (!ctx.environment.isProtected) return;
     const expiry = await createRepositories(this.database.client).authState.findActiveStepUpExpiry(
       ctx.principal.userId,
     );
     if (expiry) return;
-    await this.recordDenial(ctx, 'secret.revealed', secretId, { reason: 'step_up_required' });
+    await this.recordDenial(ctx, attempted, secretId ?? undefined, { reason: 'step_up_required' });
     throw new ApiException(
       HttpStatus.FORBIDDEN,
       AUTH_ERROR_CODES.STEP_UP_REQUIRED,
-      'Confirm your password to reveal values in a protected environment',
+      'Confirm your password to read values in a protected environment',
     );
   }
 

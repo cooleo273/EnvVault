@@ -40,6 +40,7 @@ function version(tenant: Tenant): NewSecretVersion {
     encryptionKeyId: tenant.encryptionKeyId,
     kmsKeyVersion: '1',
     envelopeVersion: 1,
+    origin: 'UPDATE',
     ...fakeEnvelope(),
   };
 }
@@ -142,7 +143,7 @@ describe('SecretRepository', () => {
       );
       revision = result?.revision ?? 0;
     }
-    const versions = await createRepositories(db).secrets.listVersions(dev, id);
+    const { items: versions } = await createRepositories(db).secrets.listVersions(dev, id);
     expect(versions.map((v) => v.versionNumber)).toEqual([4, 3, 2, 1]);
     expect(versions.filter((v) => v.isCurrent).map((v) => v.versionNumber)).toEqual([4]);
     expect(Object.keys(versions[0] ?? {})).not.toContain('ciphertext');
@@ -225,7 +226,7 @@ describe('SecretRepository', () => {
     for (const scope of [foreign, mixed]) {
       await expect(repos.secrets.get(scope, id)).resolves.toBeNull();
       await expect(repos.secrets.currentVersion(scope, id)).resolves.toBeNull();
-      await expect(repos.secrets.listVersions(scope, id)).resolves.toEqual([]);
+      await expect(repos.secrets.listVersions(scope, id)).resolves.toMatchObject({ items: [] });
       await expect(
         repos.secrets.update(scope, id, 1, { tags: ['x'] }, null, t.userId),
       ).resolves.toBeNull();
