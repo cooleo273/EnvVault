@@ -226,7 +226,7 @@ batched. New indexes support key rotation queries, unsealed event scans and rete
 7. **Audit integrity limits** in section 7.
 8. **Revocation during a request** is checked again before writes, not before reads: a reveal
    that passed authorization completes.
-9. The landing page Playwright test failed in Phase 3D (suspected: the production policy
-   upgrading requests to https on an http test server). It passed in every Phase 3E run
-   without a deliberate fix, so the cause is unconfirmed.
+9. The production CSP's `upgrade-insecure-requests` breaks prefetches on the plain http
+   Playwright server (`ERR_SSL_PROTOCOL_ERROR`); the landing page test ignores that one error
+   instead of weakening the policy.
 10. Clipboard contents and downloaded exports are outside EnvVault's control.

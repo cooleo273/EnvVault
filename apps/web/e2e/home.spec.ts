@@ -5,7 +5,11 @@ test.describe('landing page', () => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => {
-      if (message.type() === 'error') errors.push(message.text());
+      // The production CSP upgrades insecure requests; on this plain http test server an
+      // upgraded prefetch cannot connect. Over https (every real deployment) it cannot happen.
+      if (message.type() === 'error' && !message.text().includes('net::ERR_SSL_PROTOCOL_ERROR')) {
+        errors.push(message.text());
+      }
     });
 
     await page.goto('/');

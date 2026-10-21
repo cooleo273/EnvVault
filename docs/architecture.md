@@ -421,9 +421,9 @@ developer's real database.
 - Retention purges are logical deletion; copies remain in Neon history and backups.
 - Rate limits are per instance unless `RATE_LIMIT_STORE=redis`; the Redis store was tested
   against an in process emulator, not a Redis server.
-- The landing page Playwright test failed in Phase 3D with `ERR_SSL_PROTOCOL_ERROR` (the
-  production CSP's `upgrade-insecure-requests` over a plain http test server was the
-  suspected cause). It passed in every Phase 3E run without a deliberate fix, so the cause is
-  unconfirmed and the failure may come back.
+- The public Playwright suite serves the production build over plain http. The production
+  CSP (`upgrade-insecure-requests`) makes the browser upgrade a prefetch to https, which
+  fails with `ERR_SSL_PROTOCOL_ERROR` on that server (always in CI, sometimes locally). The
+  landing page test ignores that one console error; it cannot occur over https.
 - The deployment configuration in `infrastructure/deployment` has not been built or run.
 - Web CSP allows inline scripts until a nonce based CSP is introduced.
