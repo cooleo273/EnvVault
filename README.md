@@ -4,12 +4,14 @@ A centralized environment variable and secrets management platform for developer
 teams and enterprises: workspaces, projects, unlimited custom environments, and
 encrypted, versioned, audited secrets.
 
-> **Status: Phase 3C (import, export, version history and rollback).** Authentication runs on **Neon
+> **Status: Phase 3D (environment comparison, inheritance, validation and snapshots).** Authentication runs on **Neon
 > Auth**. Workspaces, members and invitations (Phase 1), and projects, custom environments
 > and per environment access (Phase 2), are implemented. Phase 3A added envelope encryption
 > (AES-256-GCM, one data key per secret version) with a **self-managed development key
 > provider**; Phase 3B stores, versions, reveals and audits environment variables through
-> it, and Phase 3C adds .env import, export, version history with rollback and bulk actions. **Do not store real secrets in EnvVault yet**: keys are still self managed, and the
+> it, Phase 3C adds .env import, export, version history with rollback and bulk actions, and
+> Phase 3D adds environment comparison, configuration inheritance, validation rules with readiness
+> checks, and snapshots with drift reports and restore. **Do not store real secrets in EnvVault yet**: keys are still self managed, and the
 > development key provider must never be used in production.
 
 See [docs/architecture.md](docs/architecture.md) for the architecture, trust
@@ -24,6 +26,12 @@ workspace → project → environment permission model.
 [docs/secrets.md](docs/secrets.md) covers variables: types, versions, the secrets API,
 reveal rules, .env import syntax, export, history and rollback, bulk actions, rate limits,
 audit events and the dashboard.
+[docs/environment-comparison.md](docs/environment-comparison.md),
+[docs/configuration-inheritance.md](docs/configuration-inheritance.md),
+[docs/configuration-validation.md](docs/configuration-validation.md) and
+[docs/configuration-snapshots.md](docs/configuration-snapshots.md) cover comparing
+environments, base environments and overrides, validation rules and readiness, and snapshots,
+drift and restore.
 [docs/encryption.md](docs/encryption.md), [docs/key-management.md](docs/key-management.md)
 and [docs/threat-model.md](docs/threat-model.md) cover envelope encryption, local key
 setup and rotation, and the security limitations of self-managed keys. The API's OpenAPI document is served

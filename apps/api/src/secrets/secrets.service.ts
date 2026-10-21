@@ -51,6 +51,7 @@ export function toSecretSummary(record: SecretRecord): SecretSummary {
     category: record.category,
     tags: record.tags,
     isRequired: record.isRequired,
+    inheritable: record.inheritable,
     status: record.deletedAt ? 'DELETED' : 'ACTIVE',
     hasValue: record.currentVersionId !== null,
     currentVersion: record.currentVersionNumber,
@@ -144,6 +145,7 @@ export class SecretsService {
             category: input.category ?? null,
             tags: input.tags,
             isRequired: input.isRequired,
+            inheritable: input.inheritable,
           },
           version,
           ctx.principal.userId,
@@ -188,6 +190,13 @@ export class SecretsService {
         'Enter a value of the new type when changing to it.',
       );
     }
+    // Credentials are never inherited; switching to SECRET needs inheritance off.
+    if (type === 'SECRET' && (input.inheritable ?? record.inheritable)) {
+      throw invalidField(
+        'inheritable',
+        'Secret values are never inherited. Turn inheritance off to use the Secret type.',
+      );
+    }
     const key = input.key ?? record.key;
     if (key !== record.key && (await this.repos.secrets.isKeyTaken(scope, key, secretId))) {
       throw keyTaken(key);
@@ -200,6 +209,7 @@ export class SecretsService {
       category: input.category,
       tags: input.tags,
       isRequired: input.isRequired,
+      inheritable: input.inheritable,
     };
     const fields = Object.entries(patch)
       .filter(([, value]) => value !== undefined)

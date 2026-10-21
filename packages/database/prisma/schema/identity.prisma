@@ -25,31 +25,34 @@ model User {
   /// re-checked against memberships before it is used.
   lastWorkspaceId String?    @map("last_workspace_id") @db.Uuid
 
-  workspacesCreated         Workspace[]             @relation("WorkspaceCreatedBy")
+  workspacesCreated         Workspace[]                   @relation("WorkspaceCreatedBy")
   memberships               WorkspaceMembership[]
-  invitationsSent           WorkspaceInvitation[]   @relation("InvitationInvitedBy")
-  invitationsAccepted       WorkspaceInvitation[]   @relation("InvitationAcceptedBy")
-  secretsCreated            Secret[]                @relation("SecretCreatedByUser")
-  secretsUpdated            Secret[]                @relation("SecretUpdatedByUser")
-  secretsDeleted            Secret[]                @relation("SecretDeletedByUser")
-  secretVersionsCreated     SecretVersion[]         @relation("SecretVersionCreatedByUser")
-  rotationPoliciesCreated   SecretRotationPolicy[]  @relation("RotationPolicyCreatedBy")
-  serviceIdentitiesCreated  ServiceIdentity[]       @relation("ServiceIdentityCreatedBy")
-  serviceCredentialsCreated ServiceCredential[]     @relation("ServiceCredentialCreatedBy")
-  serviceCredentialsRevoked ServiceCredential[]     @relation("ServiceCredentialRevokedBy")
-  accessPoliciesCreated     AccessPolicy[]          @relation("AccessPolicyCreatedBy")
-  changeRequestsRequested   ChangeRequest[]         @relation("ChangeRequestRequestedBy")
-  changeRequestsApplied     ChangeRequest[]         @relation("ChangeRequestAppliedBy")
+  invitationsSent           WorkspaceInvitation[]         @relation("InvitationInvitedBy")
+  invitationsAccepted       WorkspaceInvitation[]         @relation("InvitationAcceptedBy")
+  secretsCreated            Secret[]                      @relation("SecretCreatedByUser")
+  secretsUpdated            Secret[]                      @relation("SecretUpdatedByUser")
+  secretsDeleted            Secret[]                      @relation("SecretDeletedByUser")
+  secretVersionsCreated     SecretVersion[]               @relation("SecretVersionCreatedByUser")
+  rotationPoliciesCreated   SecretRotationPolicy[]        @relation("RotationPolicyCreatedBy")
+  serviceIdentitiesCreated  ServiceIdentity[]             @relation("ServiceIdentityCreatedBy")
+  serviceCredentialsCreated ServiceCredential[]           @relation("ServiceCredentialCreatedBy")
+  serviceCredentialsRevoked ServiceCredential[]           @relation("ServiceCredentialRevokedBy")
+  accessPoliciesCreated     AccessPolicy[]                @relation("AccessPolicyCreatedBy")
+  changeRequestsRequested   ChangeRequest[]               @relation("ChangeRequestRequestedBy")
+  changeRequestsApplied     ChangeRequest[]               @relation("ChangeRequestAppliedBy")
   changeApprovals           ChangeApproval[]
   integrationsCreated       IntegrationConnection[]
   notifications             Notification[]
   tokenRevocation           AuthTokenRevocation?
   stepUpGrants              AuthStepUpGrant[]
-  lastWorkspace             Workspace?              @relation("UserLastWorkspace", fields: [lastWorkspaceId], references: [id], onDelete: SetNull)
-  projectsCreated           Project[]               @relation("ProjectCreatedBy")
-  environmentsCreated       Environment[]           @relation("EnvironmentCreatedBy")
+  lastWorkspace             Workspace?                    @relation("UserLastWorkspace", fields: [lastWorkspaceId], references: [id], onDelete: SetNull)
+  projectsCreated           Project[]                     @relation("ProjectCreatedBy")
+  environmentsCreated       Environment[]                 @relation("EnvironmentCreatedBy")
   projectFavorites          ProjectFavorite[]
   projectVisits             ProjectVisit[]
+  validationRulesCreated    ConfigurationValidationRule[] @relation("ValidationRuleCreatedBy")
+  validationRulesUpdated    ConfigurationValidationRule[] @relation("ValidationRuleUpdatedBy")
+  snapshotsCreated          EnvironmentSnapshot[]
 
   @@index([email])
   @@index([lastWorkspaceId])

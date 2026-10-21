@@ -60,7 +60,8 @@ export default defineConfig({
     { name: 'setup', testMatch: /auth\.setup\.ts/ },
     {
       name: 'auth-flows',
-      testMatch: /(auth-flows|collaboration|secrets|secret-transfers)\.spec\.ts/,
+      testMatch:
+        /(auth-flows|collaboration|secrets|secret-transfers|environment-intelligence)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     {

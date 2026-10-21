@@ -16,10 +16,12 @@ export function StepUpDialog({
   open,
   onOpenChange,
   onConfirmed,
+  description = 'This environment is protected. Confirm your password to reveal its values for the next few minutes.',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirmed: () => void;
+  description?: string;
 }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | undefined>();
@@ -57,7 +59,7 @@ export function StepUpDialog({
       open={open}
       onOpenChange={close}
       title="Confirm your password"
-      description="This environment is protected. Confirm your password to reveal its values for the next few minutes."
+      description={description}
     >
       <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)}>
         <FormField label="Password" error={error} required>

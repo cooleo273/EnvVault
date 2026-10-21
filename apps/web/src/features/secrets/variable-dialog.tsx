@@ -36,9 +36,19 @@ export interface VariableDialogProps {
   secret?: SecretSummary;
   /** Prefills the name when adding (e.g. an expected key from the template). */
   initialKey?: string;
+  /** Prefills metadata when adding, such as an override of an inherited variable. */
+  prefill?: VariablePrefill;
   /** Names on screen, for an early duplicate warning. The API has the final word. */
   knownKeys: readonly string[];
   categories: readonly string[];
+}
+
+export interface VariablePrefill {
+  type: SecretType;
+  description: string | null;
+  category: string | null;
+  tags: readonly string[];
+  isRequired: boolean;
 }
 
 interface Draft {
@@ -51,18 +61,26 @@ interface Draft {
   category: string;
   tags: string;
   isRequired: boolean;
+  /** Offered to environments that use this one as their base. Never for SECRET. */
+  inheritable: boolean;
 }
 
-function initialDraft(secret: SecretSummary | undefined, initialKey: string | undefined): Draft {
+function initialDraft(
+  secret: SecretSummary | undefined,
+  initialKey: string | undefined,
+  prefill: VariablePrefill | undefined,
+): Draft {
+  const from = secret ?? prefill;
   return {
     key: secret?.key ?? initialKey ?? '',
-    type: secret?.type ?? 'SECRET',
+    type: from?.type ?? 'SECRET',
     value: '',
     setValue: secret === undefined,
-    description: secret?.description ?? '',
-    category: secret?.category ?? '',
-    tags: secret?.tags.join(', ') ?? '',
-    isRequired: secret?.isRequired ?? false,
+    description: from?.description ?? '',
+    category: from?.category ?? '',
+    tags: from?.tags.join(', ') ?? '',
+    isRequired: from?.isRequired ?? false,
+    inheritable: secret?.inheritable ?? false,
   };
 }
 
@@ -95,6 +113,7 @@ export function VariableDialog({
   onOpenChange,
   secret,
   initialKey,
+  prefill,
   knownKeys,
   categories,
 }: VariableDialogProps) {
@@ -102,7 +121,7 @@ export function VariableDialog({
   const formId = useId();
   const listId = useId();
   const editing = secret !== undefined;
-  const [draft, setDraft] = useState<Draft>(() => initialDraft(secret, initialKey));
+  const [draft, setDraft] = useState<Draft>(() => initialDraft(secret, initialKey, prefill));
   const [showValue, setShowValue] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | undefined>();
@@ -110,7 +129,7 @@ export function VariableDialog({
   const [pending, setPending] = useState(false);
 
   function reset() {
-    setDraft(initialDraft(secret, initialKey));
+    setDraft(initialDraft(secret, initialKey, prefill));
     setShowValue(false);
     setErrors({});
     setFormError(undefined);
@@ -150,6 +169,7 @@ export function VariableDialog({
         ...(draft.category.trim() ? { category: draft.category } : {}),
         tags,
         isRequired: draft.isRequired,
+        inheritable: draft.inheritable && draft.type !== 'SECRET',
       });
       return parsed.success
         ? { ok: true, input: parsed.data }
@@ -167,6 +187,8 @@ export function VariableDialog({
     }
     if (tags.map((t) => t.toLowerCase()).join(',') !== secret.tags.join(',')) changes.tags = tags;
     if (draft.isRequired !== secret.isRequired) changes.isRequired = draft.isRequired;
+    const inheritable = draft.inheritable && draft.type !== 'SECRET';
+    if (inheritable !== secret.inheritable) changes.inheritable = inheritable;
     if (draft.setValue) changes.value = draft.value;
     if (Object.keys(changes).length === 0)
       return { ok: false, fields: { form: 'Nothing has changed.' } };
@@ -491,6 +513,19 @@ export function VariableDialog({
           }}
           label="Required"
           description="The application expects this variable to be set."
+        />
+        <SwitchField
+          checked={draft.inheritable && draft.type !== 'SECRET'}
+          disabled={draft.type === 'SECRET'}
+          onCheckedChange={(checked) => {
+            patch({ inheritable: checked });
+          }}
+          label="Inheritable"
+          description={
+            draft.type === 'SECRET'
+              ? 'Secret variables are never inherited by other environments.'
+              : 'Environments that use this one as their base get this variable unless they define it themselves.'
+          }
         />
       </form>
     </ResponsiveModal>

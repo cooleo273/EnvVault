@@ -129,6 +129,10 @@ src/
                           SecretsController (CRUD, reveal, history, rollback), SecretVault
                           (the only path to the cipher), SecretAuthorizationService,
                           SecretRateLimiter and one service per concern
+  intelligence/           IntelligenceModule: environment comparison, effective configuration
+                          and inheritance, validation rules, readiness, snapshots, drift and
+                          restore; reuses SecretVault, SecretAuthorizationService and
+                          SecretRateLimiter, so every plaintext read follows the same rules
 ```
 
 New domains (workspaces, projects, environments, secrets) are added as feature modules
@@ -377,7 +381,10 @@ developer's real database.
 
 - Authentication, workspaces, projects, environments, templates, project roles,
   environment access grants and secrets CRUD with encrypted versions are implemented.
-  Phase 3C adds .env import, export, version history, rollback and bulk operations.
+  Phase 3C adds .env import, export, version history, rollback and bulk operations. Phase 3D
+  adds environment comparison, one level configuration inheritance, validation rules with
+  readiness checks, and snapshots with drift and restore.
+- Readiness is evaluated on request; snapshots are manual (no schedules or retention).
 - Protected-environment approvals are modelled (`required_approvals`, change request
   tables) but not enforced; no approval workflow runs yet.
 - The OpenAPI route table is registered by hand next to the controllers (kept honest by a

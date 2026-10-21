@@ -26,6 +26,12 @@ export default async function EnvironmentLayout({
   const can = (p: string) => environment.permissions.includes(p);
   const tabs = [
     { href: base, label: 'Overview' },
+    ...(can('secret:list')
+      ? [
+          { href: `${base}/readiness`, label: 'Readiness' },
+          { href: `${base}/snapshots`, label: 'Snapshots' },
+        ]
+      : []),
     ...(can('environment:update') || can('environment:protect') || can('access_policy:manage')
       ? [{ href: `${base}/settings`, label: 'Settings' }]
       : []),

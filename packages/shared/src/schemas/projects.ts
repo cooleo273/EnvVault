@@ -191,6 +191,8 @@ export type EnvironmentSummary = z.infer<typeof environmentSummarySchema>;
 
 export const environmentDetailSchema = environmentSummarySchema.extend({
   expectedKeys: z.array(expectedKeySchema),
+  /** Environment this one inherits eligible variables from. */
+  baseEnvironmentId: z.uuid().nullable(),
   /** The caller's effective permissions in this environment. */
   permissions: z.array(z.string()),
   createdBy: z.object({ displayName: z.string().nullable(), email: z.string() }).nullable(),

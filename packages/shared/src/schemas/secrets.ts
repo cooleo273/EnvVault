@@ -108,8 +108,14 @@ export const createSecretInputSchema = z
     category: secretCategorySchema.optional(),
     tags: tagsSchema.default([]),
     isRequired: z.boolean().default(false),
+    /** Environments inheriting from this one may use it. Never for SECRET. */
+    inheritable: z.boolean().default(false),
   })
-  .superRefine(checkValue);
+  .superRefine(checkValue)
+  .refine((v) => !(v.inheritable && v.type === 'SECRET'), {
+    message: 'Secret values are never inherited; use another type or turn inheritance off',
+    path: ['inheritable'],
+  });
 export type CreateSecretInput = z.input<typeof createSecretInputSchema>;
 
 /**
@@ -127,6 +133,7 @@ export const updateSecretInputSchema = z
     category: secretCategorySchema.nullable().optional(),
     tags: tagsSchema.optional(),
     isRequired: z.boolean().optional(),
+    inheritable: z.boolean().optional(),
     /** Stored with the new version when `value` is given; never a secret itself. */
     changeReason: z.string().trim().max(500, 'Use at most 500 characters').optional(),
   })
@@ -197,6 +204,8 @@ export const secretSummarySchema = z.object({
   category: z.string().nullable(),
   tags: z.array(z.string()),
   isRequired: z.boolean(),
+  /** Environments inheriting from this one may use this variable. */
+  inheritable: z.boolean(),
   status: z.enum(['ACTIVE', 'DELETED']),
   /** False until a value has been stored. */
   hasValue: z.boolean(),

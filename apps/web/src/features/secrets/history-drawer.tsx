@@ -29,6 +29,7 @@ const ORIGIN_LABELS: Record<SecretVersionDetail['origin'], string> = {
   UPDATE: 'Updated',
   IMPORT: 'Imported',
   ROLLBACK: 'Rolled back',
+  RESTORE: 'Restored from snapshot',
 };
 
 export interface HistoryDrawerProps {

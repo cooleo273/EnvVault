@@ -107,6 +107,48 @@ function revisionValues(items: readonly { id: string; expectedRevision: number }
   );
 }
 
+/** Metadata of one variable with its current version reference. Never a value. */
+export interface VariableRow {
+  id: string;
+  key: string;
+  type: SecretType;
+  category: string | null;
+  tags: string[];
+  description: string | null;
+  isRequired: boolean;
+  inheritable: boolean;
+  revision: number;
+  currentVersionId: string | null;
+  currentVersionNumber: number | null;
+  deleted: boolean;
+}
+
+const variableSelect = {
+  id: true,
+  key: true,
+  type: true,
+  category: true,
+  tags: true,
+  description: true,
+  isRequired: true,
+  inheritable: true,
+  revision: true,
+  currentVersionId: true,
+  deletedAt: true,
+  currentVersion: { select: { versionNumber: true } },
+} as const satisfies Prisma.SecretSelect;
+
+function toVariableRow(
+  row: Prisma.SecretGetPayload<{ select: typeof variableSelect }>,
+): VariableRow {
+  const { deletedAt, currentVersion, ...rest } = row;
+  return {
+    ...rest,
+    deleted: deletedAt !== null,
+    currentVersionNumber: currentVersion?.versionNumber ?? null,
+  };
+}
+
 /**
  * Operations on many variables of one environment at once. Every statement
  * is constrained by the environment scope, so an id from elsewhere never
@@ -134,6 +176,30 @@ export class SecretBulkRepository {
       this.db.secret.count({ where }),
     ]);
     return { items, total };
+  }
+
+  /**
+   * Live variables of the environment in name order, at most `max + 1` (so
+   * callers can tell that the environment exceeds `max`).
+   */
+  async variables(scope: EnvironmentScope, max: number): Promise<VariableRow[]> {
+    const rows = await this.db.secret.findMany({
+      where: { ...scopeWhere(scope), deletedAt: null },
+      orderBy: [{ key: 'asc' }, { id: 'asc' }],
+      take: max + 1,
+      select: variableSelect,
+    });
+    return rows.map(toVariableRow);
+  }
+
+  /** Variables by id with metadata, live or deleted. */
+  async variablesByIds(scope: EnvironmentScope, ids: readonly string[]): Promise<VariableRow[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.db.secret.findMany({
+      where: { ...scopeWhere(scope), id: { in: [...ids] } },
+      select: variableSelect,
+    });
+    return rows.map(toVariableRow);
   }
 
   /** Variables by id, live or deleted. Missing or foreign ids are simply absent. */
@@ -222,6 +288,7 @@ export class SecretBulkRepository {
         category: data.category,
         tags: data.tags,
         isRequired: data.isRequired,
+        inheritable: data.inheritable ?? false,
         latestVersionNumber: 1,
         currentVersionId: version.id,
         createdByUserId: userId,

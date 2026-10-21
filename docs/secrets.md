@@ -365,7 +365,11 @@ breadcrumbs, name, protection status and environment switcher; the page shows th
 - **Reveal:** the value stays in the row's state for 30 seconds and is cleared when hidden,
   when the tab is hidden and when the row unmounts. In protected environments the first reveal
   asks for the password. Copy is available only while a value is revealed.
-- **Add and edit dialog:** as in Phase 3B, plus the change note stored with a new value.
+- **Add and edit dialog:** as in Phase 3B, plus the change note stored with a new value and
+  the **Inheritable** switch (disabled for `SECRET`, see
+  [configuration-inheritance.md](configuration-inheritance.md)).
+- **Inherited variables** (environments with a base): listed below the table with their source
+  and an Override action; local variables that override one carry an **Overrides** badge.
 - **Import wizard:** paste or choose a file (shown masked by default), review entries with
   statuses and per entry Create, Overwrite or Skip, then a progress state and a summary.
   Cancel at any point before importing leaves everything unchanged.
@@ -405,10 +409,13 @@ Manual check, synthetic values only:
 8. Check **Activity** and `audit_events` for the events in section 11, and that
    `secret_versions` holds only ciphertext.
 
-**Still owed on Neon Develop** (blocked on credentials; nothing was run against Neon):
+**Neon Develop status.** `20261021090000_secrets_crud` and
+`20261022090000_secret_version_history` were applied to the Develop branch with approval, and
+the catalog was synced. Still owed there:
 
-- Review and apply `20261021090000_secrets_crud` and `20261022090000_secret_version_history`
-  with `pnpm db:migrate:deploy` (`DIRECT_URL` pointing at Develop), then `pnpm db:sync-catalog`.
+- Review and apply `20261023090000_environment_intelligence` (Phase 3D) with
+  `pnpm db:migrate:deploy`, only after explicit approval. No catalog sync is needed: Phase 3D
+  adds no permissions.
 - Run `pnpm db:check-drift` and the integration suites against a Develop branch copy.
 - Measure the import of 500 variables and a 1000 variable export over Neon's latency (the
   transactions allow 60 seconds and use one statement per batch).
