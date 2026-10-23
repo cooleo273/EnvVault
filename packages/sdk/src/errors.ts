@@ -23,3 +23,28 @@ export class EnvVaultResponseValidationError extends Error {
     this.name = 'EnvVaultResponseValidationError';
   }
 }
+
+/** The API could not be reached or did not answer in time. Carries no URL or response content. */
+export class EnvVaultNetworkError extends Error {
+  constructor(readonly reason: 'timeout' | 'unreachable') {
+    super(
+      reason === 'timeout'
+        ? 'The EnvVault API did not answer in time'
+        : 'The EnvVault API could not be reached',
+    );
+    this.name = 'EnvVaultNetworkError';
+  }
+}
+
+/** The server speaks a protocol version this client does not know. */
+export class EnvVaultIncompatibleApiError extends Error {
+  constructor(
+    readonly serverVersion: number,
+    readonly clientVersion: number,
+  ) {
+    super(
+      `The EnvVault API speaks protocol ${String(serverVersion)}; this client supports ${String(clientVersion)}`,
+    );
+    this.name = 'EnvVaultIncompatibleApiError';
+  }
+}

@@ -233,6 +233,24 @@ up to twice the byte limit; every other route keeps the 100 kB limit.
   count and every exported secret id, or `secret.export_failed`). If the success event cannot
   be written, no content is returned.
 
+### Runtime loading (`envvault run`)
+
+`POST …/environments/{environmentId}/runtime` (body `{ "includeInherited": true }`) returns
+the decrypted current values so the CLI can start a process with them in its environment
+([cli.md](cli.md)). It is not an export: nothing is formatted as a file, and the CLI never
+writes the result to disk.
+
+- Needs **`secret:runtime`** ([authorization.md, section 9](authorization.md#9-phase-4a-changes-cli)).
+  `secret:export` does not grant it. Protected environments need a direct grant and a recent
+  step up.
+- Returns `values` (`key`, `value`, `source` local or inherited), `missingRequired` (required
+  keys without a value, from `isRequired` and required validation rules) and
+  `withheldInherited` (inherited values left out because the caller may not load the base).
+- At most 2000 values and `RUNTIME_MAX_BYTES` (default 1 MiB) of response; a larger
+  environment answers `413 RUNTIME_TOO_LARGE` rather than a partial set.
+- Sent with `no-store`. Audited as `secret.runtime_loaded` (count and secret ids) before the
+  values are returned; if the event cannot be written nothing is returned.
+
 ## 7. History and rollback
 
 **History** (`GET /{id}/versions`) lists versions newest first with keyset pagination
@@ -317,14 +335,16 @@ permissions are then checked per operation by `SecretAuthorizationService`, whic
 Per user limits, configurable, checked after authorization (a 429 never tells someone without
 access whether a variable exists):
 
-| Variable                            |       Default | Counts                                                      |
-| ----------------------------------- | ------------: | ----------------------------------------------------------- |
-| `SECRET_REVEAL_RATE_LIMIT`          | 60 per minute | Reveals, historical reveals and comparisons of any variable |
-| `SECRET_REVEAL_RESOURCE_RATE_LIMIT` | 20 per minute | The same, for one variable                                  |
-| `SECRET_BULK_READ_RATE_LIMIT`       | 10 per minute | Exports and value comparing import previews                 |
-| `SECRET_IMPORT_RATE_LIMIT`          | 10 per minute | Import commits                                              |
-| `SECRET_BULK_WRITE_RATE_LIMIT`      | 20 per minute | Bulk updates, deletes and restores                          |
-| `SECRET_ROLLBACK_RATE_LIMIT`        | 30 per minute | Rollbacks                                                   |
+| Variable                             |       Default | Counts                                                      |
+| ------------------------------------ | ------------: | ----------------------------------------------------------- |
+| `SECRET_REVEAL_RATE_LIMIT`           | 60 per minute | Reveals, historical reveals and comparisons of any variable |
+| `SECRET_REVEAL_RESOURCE_RATE_LIMIT`  | 20 per minute | The same, for one variable                                  |
+| `SECRET_BULK_READ_RATE_LIMIT`        | 10 per minute | Exports and value comparing import previews                 |
+| `SECRET_IMPORT_RATE_LIMIT`           | 10 per minute | Import commits                                              |
+| `SECRET_BULK_WRITE_RATE_LIMIT`       | 20 per minute | Bulk updates, deletes and restores                          |
+| `SECRET_ROLLBACK_RATE_LIMIT`         | 30 per minute | Rollbacks                                                   |
+| `SECRET_RUNTIME_RATE_LIMIT`          | 30 per minute | Runtime loads (`envvault run`) across environments          |
+| `SECRET_RUNTIME_RESOURCE_RATE_LIMIT` | 20 per minute | Runtime loads of one environment                            |
 
 Exceeding a limit blocks that counter until its window ends (429 with `Retry-After`) and
 records one `secret.access_denied` event with `reason: rate_limited` per block. Counters are
@@ -358,6 +378,7 @@ categories, never values, file contents or request bodies.
 | `secret.import_previewed`                                                                       | SUCCESS          | Counts per status, whether values were compared                                                        |
 | `secret.import_started`, `secret.import_completed`, `secret.import_failed`                      | SUCCESS, FAILURE | Completed is in the transaction, with every created or updated id                                      |
 | `secret.export_requested`, `secret.exported`, `secret.export_failed`                            | SUCCESS, FAILURE | Format, count and every exported id                                                                    |
+| `secret.runtime_loaded`                                                                         | SUCCESS          | `envvault run`: count, ids and whether inherited values were included; before values are returned      |
 | `secret.bulk_deleted`, `secret.bulk_restored`, `secret.bulk_updated`                            | SUCCESS          | In the transaction, with every id and the changed fields                                               |
 | `secret.batch_items`                                                                            | as above         | Continuation of a batch event: ids beyond the first 250, same `batchId`                                |
 | `secret.access_denied`                                                                          | DENIED           | Permission, step up or rate limit refusals                                                             |

@@ -1,4 +1,5 @@
 import { AuditSealRepository } from './audit-seal.repository.js';
+import { CliAuthRepository } from './cli-auth.repository.js';
 import { IdempotencyRepository } from './idempotency.repository.js';
 import { MaintenanceJobRepository, RetentionRepository } from './retention.repository.js';
 import { KeyMaintenanceRepository } from './key-maintenance.repository.js';
@@ -153,6 +154,14 @@ export {
   type StoredIdempotency,
 } from './idempotency.repository.js';
 
+export {
+  CliAuthRepository,
+  type CliSessionRecord,
+  type DeviceGrantRecord,
+  type DeviceGrantStatus,
+  type NewCliSession,
+} from './cli-auth.repository.js';
+
 export function createRepositories(db: DbClient) {
   return {
     access: new AccessRepository(db),
@@ -161,6 +170,7 @@ export function createRepositories(db: DbClient) {
     audit: new AuditRepository(db),
     auditSeals: new AuditSealRepository(db),
     authState: new AuthStateRepository(db),
+    cliAuth: new CliAuthRepository(db),
     invitations: new InvitationRepository(db),
     memberships: new MembershipRepository(db),
     projects: new ProjectRepository(db),

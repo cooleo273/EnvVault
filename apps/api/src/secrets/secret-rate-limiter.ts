@@ -4,7 +4,7 @@ import type { SecretRequestContext } from './secret-authorization.service.js';
 import { SecretVault } from './secret-vault.service.js';
 
 export type SecretAction =
-  'reveal' | 'bulk-read' | 'import' | 'bulk-write' | 'rollback' | 'restore';
+  'reveal' | 'bulk-read' | 'import' | 'bulk-write' | 'rollback' | 'restore' | 'runtime';
 
 const ATTEMPTED: Record<SecretAction, string> = {
   reveal: 'secret.revealed',
@@ -13,6 +13,7 @@ const ATTEMPTED: Record<SecretAction, string> = {
   'bulk-write': 'secret.bulk_updated',
   rollback: 'secret.rolled_back',
   restore: 'environment.snapshot_restored',
+  runtime: 'secret.runtime_loaded',
 };
 
 /**

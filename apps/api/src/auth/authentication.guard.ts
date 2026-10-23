@@ -7,14 +7,15 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { createRepositories } from '@envvault/database';
-import { AUTH_ERROR_CODES } from '@envvault/shared';
+import { AUTH_ERROR_CODES, CLI_ERROR_CODES } from '@envvault/shared';
 import { ApiException } from '../common/api-exception.js';
 import { DatabaseService } from '../database/database.service.js';
-import { ALLOW_UNVERIFIED_EMAIL_KEY, IS_PUBLIC_KEY } from './auth.decorators.js';
+import { CLI_ACCESS_PREFIX, CliAuthService, tokenHash } from '../cli-auth/cli-auth.service.js';
+import { ALLOW_UNVERIFIED_EMAIL_KEY, CLI_ACCESS_KEY, IS_PUBLIC_KEY } from './auth.decorators.js';
 import { TOKEN_VERIFIER } from './auth.tokens.js';
 import { extractBearerToken } from './bearer-token.js';
 import { type NeonTokenVerifier, TokenVerificationError } from './neon-token.verifier.js';
-import type { AuthenticatedRequest } from './principal.js';
+import type { AuthenticatedRequest, Principal } from './principal.js';
 
 function unauthorized(code: string, message: string, error = 'invalid_token'): ApiException {
   return new ApiException(HttpStatus.UNAUTHORIZED, code, message, {
@@ -33,6 +34,7 @@ export class AuthenticationGuard implements CanActivate {
     private readonly reflector: Reflector,
     @Inject(TOKEN_VERIFIER) private readonly verifier: NeonTokenVerifier,
     private readonly database: DatabaseService,
+    private readonly cli: CliAuthService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -50,6 +52,18 @@ export class AuthenticationGuard implements CanActivate {
         'Authentication required',
         { 'WWW-Authenticate': 'Bearer' },
       );
+    }
+
+    if (token.startsWith(CLI_ACCESS_PREFIX)) {
+      if (!this.reflector.getAllAndOverride<boolean>(CLI_ACCESS_KEY, targets)) {
+        throw new ApiException(
+          HttpStatus.FORBIDDEN,
+          CLI_ERROR_CODES.CLI_TOKEN_NOT_ALLOWED,
+          'This action is not available to the CLI; use the web app',
+        );
+      }
+      request.principal = await this.cliPrincipal(token);
+      return true;
     }
 
     let verified;
@@ -115,5 +129,42 @@ export class AuthenticationGuard implements CanActivate {
       tokenIssuedAt: verified.issuedAt,
     };
     return true;
+  }
+
+  /**
+   * A CLI access token: an EnvVault session a Neon Auth user approved in the
+   * browser. Checked on every request against the session (revoked,
+   * expired), the account (active, verified) and the last "sign out
+   * everywhere".
+   */
+  private async cliPrincipal(token: string): Promise<Principal> {
+    const now = new Date();
+    const repos = createRepositories(this.database.client);
+    const session = await repos.cliAuth.sessionByAccessToken(tokenHash(token));
+    if (!session) throw unauthorized(AUTH_ERROR_CODES.TOKEN_INVALID, 'Invalid access token');
+    if (session.revokedAt)
+      throw unauthorized(AUTH_ERROR_CODES.TOKEN_REVOKED, 'Access token revoked');
+    if (session.accessExpiresAt <= now || session.expiresAt <= now) {
+      throw unauthorized(AUTH_ERROR_CODES.TOKEN_EXPIRED, 'Access token expired');
+    }
+    await this.cli.assertUsable(session, now);
+    const profile = await repos.users.findProfile(session.userId);
+    if (!profile) throw unauthorized(AUTH_ERROR_CODES.TOKEN_INVALID, 'Invalid access token');
+    if (!profile.emailVerified) {
+      throw new ApiException(
+        HttpStatus.FORBIDDEN,
+        AUTH_ERROR_CODES.EMAIL_NOT_VERIFIED,
+        'Verify your email address to continue',
+      );
+    }
+    await repos.cliAuth.touch(session.id, now);
+    return {
+      userId: profile.id,
+      authUserId: profile.authUserId,
+      email: profile.email,
+      emailVerified: true,
+      tokenIssuedAt: session.createdAt,
+      cliSessionId: session.id,
+    };
   }
 }

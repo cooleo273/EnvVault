@@ -36,6 +36,7 @@ import {
   CurrentWorkspace,
   RequireStepUp,
   RequireWorkspacePermission,
+  AllowCliToken,
 } from '../auth/auth.decorators.js';
 import type { AuthenticatedRequest, AuthorizedWorkspace, Principal } from '../auth/principal.js';
 import { ApiException } from '../common/api-exception.js';
@@ -61,6 +62,7 @@ export class WorkspacesController {
 
   /** Workspaces the caller belongs to (derived from the token, never from input). */
   @Get()
+  @AllowCliToken()
   @Authenticated()
   async list(
     @CurrentPrincipal() principal: Principal,
@@ -126,6 +128,7 @@ export class WorkspacesController {
   }
 
   @Get(':workspaceId')
+  @AllowCliToken()
   @RequireWorkspacePermission('workspace:read')
   @AllowArchivedWorkspace()
   async get(@CurrentWorkspace() workspace: AuthorizedWorkspace): Promise<WorkspaceDetail> {

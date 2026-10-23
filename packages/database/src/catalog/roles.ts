@@ -119,6 +119,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       'secret:delete',
       'secret:rollback',
       'secret:export',
+      'secret:runtime',
       'service_identity:read',
       'change_request:create',
       'change_request:review',
@@ -132,7 +133,13 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
     name: 'Developer',
     description: 'Works with secrets in unprotected environments. Cannot change project settings.',
     scope: 'PROJECT',
-    permissions: [...PROJECT_READ, 'secret:read', 'secret:write', 'change_request:create'],
+    permissions: [
+      ...PROJECT_READ,
+      'secret:read',
+      'secret:write',
+      'secret:runtime',
+      'change_request:create',
+    ],
   },
   {
     key: 'project-viewer',
@@ -173,9 +180,9 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
   {
     key: 'environment-reader',
     name: 'Secret reader',
-    description: 'Reads secret values in this environment.',
+    description: 'Reads secret values in this environment, and loads them into local processes.',
     scope: 'ENVIRONMENT',
-    permissions: ['environment:read', 'secret:list', 'secret:read'],
+    permissions: ['environment:read', 'secret:list', 'secret:read', 'secret:runtime'],
   },
   {
     key: 'environment-writer',
@@ -189,6 +196,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       'secret:write',
       'secret:delete',
       'secret:rollback',
+      'secret:runtime',
       'change_request:create',
     ],
   },

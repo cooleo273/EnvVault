@@ -1,6 +1,21 @@
 import {
   type CompareEnvironmentsInput,
+  API_PROTOCOL_VERSION,
+  type CliDeviceRequest,
+  cliDeviceRequestSchema,
+  type CliDeviceStart,
+  type CliDeviceStartInput,
+  cliDeviceStartSchema,
+  type CliSession,
+  cliSessionListSchema,
+  type CliToken,
+  cliTokenSchema,
   type CreateSnapshotInput,
+  type MetaResponse,
+  metaResponseSchema,
+  type RuntimeConfiguration,
+  type RuntimeConfigurationInput,
+  runtimeConfigurationSchema,
   type MaintenanceJob,
   maintenanceJobSchema,
   type RetentionPolicy,
@@ -133,7 +148,12 @@ import {
   workspaceSummarySchema,
 } from '@envvault/shared';
 import { z } from 'zod';
-import { EnvVaultApiError, EnvVaultResponseValidationError } from './errors.js';
+import {
+  EnvVaultApiError,
+  EnvVaultIncompatibleApiError,
+  EnvVaultNetworkError,
+  EnvVaultResponseValidationError,
+} from './errors.js';
 
 export interface EnvVaultClientOptions {
   /** API origin, e.g. `https://api.envvault.example`. The versioned base path is appended automatically. */
@@ -147,6 +167,14 @@ export interface EnvVaultClientOptions {
   fetch?: typeof fetch;
   /** Request timeout in milliseconds. */
   timeoutMs?: number;
+  /**
+   * Retries after a network failure or a 502, 503 or 504, with backoff. Only
+   * for requests that are safe to repeat: reads, and mutations sent with an
+   * idempotency key. Default 0.
+   */
+  retries?: number;
+  /** Sent as User-Agent where the runtime allows it (Node does). */
+  userAgent?: string;
 }
 
 interface RequestOptions<T> {
@@ -1137,6 +1165,98 @@ export class EnvVaultClient {
     });
   }
 
+  /** Protocol version and features (public). */
+  meta(): Promise<MetaResponse> {
+    return this.request('/meta', { schema: metaResponseSchema, authenticated: false });
+  }
+
+  /** Refuses a server whose protocol version this client does not speak. */
+  async checkCompatibility(): Promise<MetaResponse> {
+    const meta = await this.meta();
+    if (meta.protocolVersion !== API_PROTOCOL_VERSION) {
+      throw new EnvVaultIncompatibleApiError(meta.protocolVersion, API_PROTOCOL_VERSION);
+    }
+    return meta;
+  }
+
+  /** CLI sign in, step 1: open a request the person approves in the browser. */
+  startCliLogin(input: CliDeviceStartInput): Promise<CliDeviceStart> {
+    return this.request('/cli/device/authorize', {
+      method: 'POST',
+      body: input,
+      schema: cliDeviceStartSchema,
+      authenticated: false,
+    });
+  }
+
+  /** CLI sign in, step 3: throws EnvVaultApiError with AUTHORIZATION_PENDING until approved. */
+  pollCliLogin(deviceCode: string): Promise<CliToken> {
+    return this.request('/cli/device/token', {
+      method: 'POST',
+      body: { deviceCode },
+      schema: cliTokenSchema,
+      authenticated: false,
+    });
+  }
+
+  refreshCliSession(refreshToken: string): Promise<CliToken> {
+    return this.request('/cli/token/refresh', {
+      method: 'POST',
+      body: { refreshToken },
+      schema: cliTokenSchema,
+      authenticated: false,
+    });
+  }
+
+  cliLoginRequest(userCode: string): Promise<CliDeviceRequest> {
+    return this.request(`/cli/device/${encodeURIComponent(userCode)}`, {
+      schema: cliDeviceRequestSchema,
+    });
+  }
+
+  async approveCliLogin(userCode: string): Promise<void> {
+    await this.request('/cli/device/approve', {
+      method: 'POST',
+      body: { userCode },
+      schema: noContentSchema,
+    });
+  }
+
+  async denyCliLogin(userCode: string): Promise<void> {
+    await this.request('/cli/device/deny', {
+      method: 'POST',
+      body: { userCode },
+      schema: noContentSchema,
+    });
+  }
+
+  async cliSessions(): Promise<CliSession[]> {
+    return (await this.request('/cli/sessions', { schema: cliSessionListSchema })).items;
+  }
+
+  /** Ends the calling CLI session (envvault logout). */
+  async endCliSession(): Promise<void> {
+    await this.request('/cli/sessions/current/revoke', { method: 'POST', schema: noContentSchema });
+  }
+
+  async revokeCliSession(sessionId: string): Promise<void> {
+    await this.request(`/cli/sessions/${sessionId}`, { method: 'DELETE', schema: noContentSchema });
+  }
+
+  /** Decrypted values for a local process. Needs `secret:runtime`; never cached. */
+  runtimeConfiguration(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: RuntimeConfigurationInput = {},
+  ): Promise<RuntimeConfiguration> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/runtime`, {
+      method: 'POST',
+      body: input,
+      schema: runtimeConfigurationSchema,
+    });
+  }
+
   retentionPolicy(workspaceId: string): Promise<RetentionPolicy> {
     return this.request(`/workspaces/${workspaceId}/retention`, { schema: retentionPolicySchema });
   }
@@ -1181,7 +1301,9 @@ export class EnvVaultClient {
   }
 
   private async request<T>(path: string, options: RequestOptions<T>): Promise<T> {
+    const method = options.method ?? 'GET';
     const headers: Record<string, string> = { accept: 'application/json' };
+    if (this.options.userAgent) headers['user-agent'] = this.options.userAgent;
     if (options.authenticated !== false) {
       const token = await this.getAccessToken?.();
       if (!token) {
@@ -1194,16 +1316,39 @@ export class EnvVaultClient {
       headers.authorization = `Bearer ${token}`;
     }
     if (options.body !== undefined) headers['content-type'] = 'application/json';
-    if (this.idempotencyKey && options.method && options.method !== 'GET') {
+    if (this.idempotencyKey && method !== 'GET') {
       headers['idempotency-key'] = this.idempotencyKey;
     }
+    // Repeating is only safe for reads and for mutations the server can deduplicate.
+    const repeatable = method === 'GET' || this.idempotencyKey !== undefined;
+    const attempts = 1 + (repeatable ? Math.max(0, this.options.retries ?? 0) : 0);
 
-    const response = await this.fetchImpl(`${this.baseUrl}${API_BASE_PATH}${path}`, {
-      method: options.method ?? 'GET',
-      headers,
-      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
+    let response: Response | undefined;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        response = await this.fetchImpl(`${this.baseUrl}${API_BASE_PATH}${path}`, {
+          method,
+          headers,
+          ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+          signal: AbortSignal.timeout(this.timeoutMs),
+        });
+      } catch (error) {
+        if (attempt < attempts) {
+          await backoff(attempt);
+          continue;
+        }
+        const name = (error as Error | undefined)?.name;
+        throw new EnvVaultNetworkError(
+          name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'unreachable',
+        );
+      }
+      if (attempt < attempts && [502, 503, 504].includes(response.status)) {
+        await response.body?.cancel().catch(() => undefined);
+        await backoff(attempt);
+        continue;
+      }
+      break;
+    }
     const body: unknown =
       response.status === 204 ? undefined : await response.json().catch(() => undefined);
 
@@ -1221,6 +1366,11 @@ export class EnvVaultClient {
     }
     return parsed.data as T;
   }
+}
+
+function backoff(attempt: number): Promise<void> {
+  const delay = Math.min(2000, 200 * 2 ** (attempt - 1)) * (0.5 + Math.random() / 2);
+  return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
 /** An invitation by link token, or by id when it is addressed to the signed-in user. */

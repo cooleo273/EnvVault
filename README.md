@@ -4,14 +4,15 @@ A centralized environment variable and secrets management platform for developer
 teams and enterprises: workspaces, projects, unlimited custom environments, and
 encrypted, versioned, audited secrets.
 
-> **Status: Phase 3E (security hardening, key recovery and deployment readiness).**
+> **Status: Phase 4A (developer CLI and secure local development).**
 > Authentication runs on **Neon Auth**. Workspaces, members and invitations (Phase 1), and
 > projects, custom environments and per environment access (Phase 2), are implemented.
 > Phase 3A added envelope encryption (AES-256-GCM, one data key per secret version); Phase 3B
 > stores, versions, reveals and audits environment variables; Phase 3C adds .env import,
 > export, history with rollback and bulk actions; Phase 3D adds environment comparison,
 > inheritance, validation and snapshots; Phase 3E adds key rotation tooling, encrypted keyring
-> backups, retention, shared rate limits, audit seals, idempotency and deployment configuration.
+> backups, retention, shared rate limits, audit seals, idempotency and deployment configuration;
+> Phase 4A adds the `envvault` CLI with browser approved sign in and `envvault run`.
 > **Do not store real secrets in EnvVault yet**: keys are self managed on the API host and the
 > remaining production blockers are listed in
 > [docs/security-hardening.md](docs/security-hardening.md#10-remaining-risks-and-production-blockers).
@@ -41,7 +42,10 @@ rotation, backups and the limitations of self managed keys.
 remaining risks; [docs/disaster-recovery.md](docs/disaster-recovery.md),
 [docs/deployment.md](docs/deployment.md) and
 [docs/operational-runbook.md](docs/operational-runbook.md) cover recovery, the reference
-deployment and operator procedures. The API's OpenAPI document is served
+deployment and operator procedures.
+[docs/cli.md](docs/cli.md) and [docs/cli-authentication.md](docs/cli-authentication.md) cover
+the `envvault` CLI: commands, `run` and `pull`, exit codes, platforms and the device sign in
+flow. The API's OpenAPI document is served
 at `GET /api/v1/openapi.json`. UI conventions are in
 [docs/design-system.md](docs/design-system.md); open `/design-system` in the running
 app for the component reference.
@@ -113,12 +117,20 @@ The API starts without a database: liveness reports `ok`, and readiness returns
 `503` with `"database": {"status": "down"}` until PostgreSQL is reachable with the
 credentials in `DATABASE_URL`.
 
-You can also check the API from the CLI:
+### Using the CLI
 
 ```bash
 pnpm --filter @envvault/cli build
-node apps/cli/dist/bin.js health            # or: --api-url http://localhost:4000 --json
+alias envvault="node $PWD/apps/cli/dist/bin.js"
+envvault health                  # API reachable?
+envvault login                   # approve in the browser (password confirmation)
+cd path/to/your/app
+envvault init                    # writes .envvault.json (ids only)
+envvault run -- npm run dev      # values go to the child's environment only
+envvault doctor                  # what is missing, and how to fix it
 ```
+
+See [docs/cli.md](docs/cli.md) for every command, exit codes and platform notes.
 
 ## Scripts
 
@@ -226,6 +238,10 @@ git-ignored; only `*.env.example` templates with placeholder values are committe
   audited reveal route, and every secrets response is sent with `Cache-Control: no-store`.
 - EnvVault stores no passwords: credentials and sessions belong to Neon Auth. The
   browser never receives an API token; see [authentication.md](docs/authentication.md).
+- The CLI signs in through browser approval with a password confirmation, keeps its tokens
+  in the operating system credential store, and may call only a short list of read routes.
+  Prefer `envvault run` over `envvault pull`: it never writes values to disk
+  ([cli.md](docs/cli.md)).
 - The local Docker setup is for development only.
 
 ## Contributing

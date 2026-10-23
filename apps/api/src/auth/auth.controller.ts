@@ -78,6 +78,12 @@ export class AuthController {
     const reason = body.reason === 'password_changed' ? 'PASSWORD_CHANGED' : 'LOGOUT_ALL_DEVICES';
     await repos.authState.revokeTokensIssuedBefore(principal.userId, reason);
     await repos.authState.clearStepUpGrants(principal.userId);
+    // CLI sessions end too; the cutoff above would refuse them anyway, this makes it explicit.
+    await repos.cliAuth.revokeAllForUser(
+      principal.userId,
+      body.reason === 'password_changed' ? 'password_changed' : 'sign_out_everywhere',
+      new Date(),
+    );
     await repos.audit.append({
       actorUserId: principal.userId,
       action:

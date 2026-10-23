@@ -185,6 +185,16 @@ export const envSchema = z
     SNAPSHOT_RESTORE_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(5),
     /** Grants, revocations and role changes by one user, per minute. */
     ACCESS_CHANGE_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(30),
+    /** Runtime loads (envvault run) by one user, per minute, and per environment. */
+    SECRET_RUNTIME_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(30),
+    SECRET_RUNTIME_RESOURCE_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(20),
+    /** Total key and value bytes one runtime response may carry. */
+    RUNTIME_MAX_BYTES: z.coerce
+      .number()
+      .int()
+      .min(64 * 1024)
+      .max(16 * 1024 * 1024)
+      .default(1024 * 1024),
     /** Password confirmations (step up) by one user, per five minutes. */
     STEP_UP_RATE_LIMIT: z.coerce.number().int().min(1).max(100).default(5),
   })

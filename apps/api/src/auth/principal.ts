@@ -6,7 +6,10 @@ import type {
 } from '@envvault/database';
 import type { Request } from 'express';
 
-/** The authenticated caller, derived exclusively from a verified Neon Auth token. */
+/**
+ * The authenticated caller, derived exclusively from a verified Neon Auth
+ * token or from an EnvVault CLI session that a Neon Auth user approved.
+ */
 export interface Principal {
   /** EnvVault profile id (`users.id`). */
   userId: string;
@@ -15,6 +18,8 @@ export interface Principal {
   email: string;
   emailVerified: boolean;
   tokenIssuedAt: Date;
+  /** Set when the request carries a CLI access token instead of a Neon Auth token. */
+  cliSessionId?: string;
 }
 
 /** Result of workspace authorization: proof of access plus the caller's role. */

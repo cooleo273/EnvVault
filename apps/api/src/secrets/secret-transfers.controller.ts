@@ -27,6 +27,7 @@ import {
   CurrentEnvironment,
   CurrentPrincipal,
   RequireEnvironmentPermission,
+  AllowCliToken,
 } from '../auth/auth.decorators.js';
 import type { AuthenticatedRequest, AuthorizedEnvironment, Principal } from '../auth/principal.js';
 import { NoStoreInterceptor } from '../common/no-store.interceptor.js';
@@ -95,6 +96,7 @@ export class SecretTransfersController {
 
   /** Decrypted file content for download; POST so values never go through a URL. */
   @Post('export')
+  @AllowCliToken()
   @HttpCode(HttpStatus.OK)
   @RequireEnvironmentPermission('secret:list')
   @AllowArchived('workspace', 'project', 'environment')

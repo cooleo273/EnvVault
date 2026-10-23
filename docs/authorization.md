@@ -194,3 +194,35 @@ nobody can change their own role or grants.
 New permissions belong in `packages/shared/src/domain/permissions.ts`. Classify each as
 project, environment or data plane scoped in `access.ts`, then run `pnpm db:sync-catalog` to
 update existing workspaces.
+
+## 9. Phase 4A changes (CLI)
+
+One permission was added: **`secret:runtime`**, which lets `envvault run` load decrypted
+values of an environment into a child process (`POST …/environments/:id/runtime`).
+
+| Role                            | `secret:runtime` | Notes                                                        |
+| ------------------------------- | :--------------: | ------------------------------------------------------------ |
+| Project Admin                   |       yes        |                                                              |
+| Project Developer               |       yes        | Developers run their apps; they still cannot export          |
+| Environment reader              |       yes        |                                                              |
+| Environment writer              |       yes        |                                                              |
+| Secret exporter                 |        no        | Export and runtime loading are granted separately on purpose |
+| Project Viewer, workspace roles |        no        |                                                              |
+
+- `secret:runtime` is data plane scoped: it is never inherited into protected environments,
+  so a protected environment needs a direct ALLOW grant that includes it, plus a recent
+  step up. DENY, grant expiry and membership removal apply as for every other permission.
+- `secret:export` does not imply `secret:runtime`, and `secret:runtime` does not imply
+  `secret:export` or `secret:read` (reveal). `envvault pull` uses the existing export route
+  and therefore needs `secret:export` and `secret:read`.
+- Inherited values are included in a runtime load only when the caller also has
+  `secret:runtime` on the base environment; otherwise they are withheld and counted.
+- Refusals are audited as `secret.access_denied`, loads as `secret.runtime_loaded` (ids and
+  counts only).
+- CLI tokens carry the person's identity but are accepted only on routes marked
+  `@AllowCliToken()`; nothing that changes roles, grants or membership is reachable with
+  one. See [cli-authentication.md](cli-authentication.md#4-what-a-cli-token-may-do).
+
+The permission key is `secret:runtime` rather than `secret:runtime:read` because catalog keys
+have exactly one `resource:action` separator (database check constraint). Existing
+workspaces need `pnpm db:sync-catalog` for the role changes.

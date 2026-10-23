@@ -15,7 +15,9 @@ export type SensitiveAction =
   | 'rollback'
   | 'restore'
   | 'access-change'
-  | 'step-up';
+  | 'step-up'
+  | 'runtime'
+  | 'cli-approve';
 
 interface Rule {
   limit: number;
@@ -32,6 +34,8 @@ const MESSAGES: Record<SensitiveAction, string> = {
   restore: 'Too many snapshot restores in a short time. Wait a minute and try again.',
   'access-change': 'Too many access changes in a short time. Wait a minute and try again.',
   'step-up': 'Too many password confirmations. Wait a few minutes and try again.',
+  runtime: 'Too many runs loaded values in a short time. Wait a minute and try again.',
+  'cli-approve': 'Too many CLI sign in approvals. Wait a few minutes and try again.',
 };
 
 export interface ConsumeInput {
@@ -72,6 +76,12 @@ export class SensitiveRateLimiter {
       restore: { limit: env.SNAPSHOT_RESTORE_RATE_LIMIT, windowMs: minute },
       'access-change': { limit: env.ACCESS_CHANGE_RATE_LIMIT, windowMs: minute },
       'step-up': { limit: env.STEP_UP_RATE_LIMIT, windowMs: 5 * minute },
+      runtime: {
+        limit: env.SECRET_RUNTIME_RATE_LIMIT,
+        windowMs: minute,
+        resourceLimit: env.SECRET_RUNTIME_RESOURCE_RATE_LIMIT,
+      },
+      'cli-approve': { limit: 10, windowMs: 5 * minute },
     };
   }
 

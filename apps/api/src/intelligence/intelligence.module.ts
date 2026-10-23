@@ -8,6 +8,7 @@ import {
   EnvironmentIntelligenceController,
 } from './intelligence.controller.js';
 import { ReadinessService } from './readiness.service.js';
+import { RuntimeService } from './runtime.service.js';
 import { SnapshotService } from './snapshot.service.js';
 import { ValidationService } from './validation.service.js';
 
@@ -22,6 +23,7 @@ import { ValidationService } from './validation.service.js';
     ValidationService,
     ReadinessService,
     SnapshotService,
+    RuntimeService,
   ],
 })
 export class IntelligenceModule {}

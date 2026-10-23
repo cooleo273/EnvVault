@@ -18,6 +18,8 @@ import {
   listSnapshotsQuerySchema,
   type ReadinessReport,
   readinessInputSchema,
+  type RuntimeConfiguration,
+  runtimeConfigurationInputSchema,
   replaceValidationRulesInputSchema,
   type RestorePreview,
   restorePreviewInputSchema,
@@ -34,6 +36,7 @@ import {
 import type { z } from 'zod';
 import {
   AllowArchived,
+  AllowCliToken,
   CurrentEnvironment,
   CurrentPrincipal,
   CurrentProject,
@@ -49,6 +52,7 @@ import type {
   Principal,
 } from '../auth/principal.js';
 import { NoStoreInterceptor } from '../common/no-store.interceptor.js';
+import { RuntimeService } from './runtime.service.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
 import { requestIdOf } from '../common/request-id.util.js';
 import { UuidParam } from '../common/uuid-param.js';
@@ -107,6 +111,7 @@ export class EnvironmentIntelligenceController {
     private readonly validation: ValidationService,
     private readonly readiness: ReadinessService,
     private readonly snapshots: SnapshotService,
+    private readonly runtime: RuntimeService,
   ) {}
 
   /** Local and inherited variables (metadata only). */
@@ -170,10 +175,32 @@ export class EnvironmentIntelligenceController {
     );
   }
 
+  /**
+   * Values for a local process (`envvault run`). The guard only needs the
+   * environment to be visible; the service requires `secret:runtime` and
+   * audits refusals.
+   */
+  @Post('runtime')
+  @HttpCode(HttpStatus.OK)
+  @RequireEnvironmentPermission('environment:read')
+  @AllowCliToken()
+  loadRuntime(
+    @CurrentPrincipal() principal: Principal,
+    @CurrentWorkspace() workspace: AuthorizedWorkspace,
+    @CurrentProject() project: AuthorizedProject,
+    @CurrentEnvironment() environment: AuthorizedEnvironment,
+    @Body(new ZodValidationPipe(runtimeConfigurationInputSchema))
+    body: z.output<typeof runtimeConfigurationInputSchema>,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RuntimeConfiguration> {
+    return this.runtime.load(callerOf(principal, workspace, project, request), environment, body);
+  }
+
   /** Configuration readiness. Values are decrypted only with `inspectValues`. */
   @Post('readiness')
   @HttpCode(HttpStatus.OK)
   @RequireEnvironmentPermission('secret:list')
+  @AllowCliToken()
   @AllowArchived('workspace', 'project', 'environment')
   evaluate(
     @CurrentPrincipal() principal: Principal,

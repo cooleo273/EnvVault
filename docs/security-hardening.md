@@ -230,3 +230,30 @@ batched. New indexes support key rotation queries, unsealed event scans and rete
    Playwright server (`ERR_SSL_PROTOCOL_ERROR`); the landing page test ignores that one error
    instead of weakening the policy.
 10. Clipboard contents and downloaded exports are outside EnvVault's control.
+
+## 11. Phase 4A: developer CLI
+
+New attack surfaces: the public device authorization endpoints, CLI tokens on developer
+machines, and plaintext values in child process environments and `.env` files.
+
+| Risk                                     | Control                                                                                                                                                                                                                   | Test                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Phishing a CLI approval                  | User code shown in terminal and browser, host and platform shown with a "not verified" warning, approval needs a fresh password confirmation, 10 minute expiry, per user approval limit                                   | `cli-auth.int-spec.ts`                                     |
+| Guessing or polling device codes         | 32 random bytes, stored hashed, `SLOW_DOWN`, single use, sensitive rate limit                                                                                                                                             | `cli-auth.int-spec.ts`                                     |
+| Stolen CLI token                         | 1 hour access token; route allow list (`CLI_TOKEN_NOT_ALLOWED` elsewhere); refresh rotation with reuse detection that revokes the session; revocation in Security settings, on sign out everywhere and on password change | `cli-auth.int-spec.ts`, `cli-process.int-spec.ts`          |
+| Tokens at rest                           | Hashes only in the database; OS credential store on the client; file store only on explicit opt in, mode `0600`, refused when readable by others                                                                          | `credentials.test.ts`, `cli-process.int-spec.ts`           |
+| Bulk retrieval through the runtime route | Separate `secret:runtime` permission, no inheritance into protected environments, step up, per user and per environment limits, 2000 values and 1 MiB ceilings, audit before return, `no-store`                           | `cli-auth.int-spec.ts`                                     |
+| Values leaking from the CLI              | No shell, values only in the child environment, counts but never values printed, error messages reduced to API codes and categories, no values in arguments                                                               | `run.test.ts`, `errors.test.ts`, `cli-process.int-spec.ts` |
+| `.env` files in the wrong place          | `pull` needs `secret:export`, refuses published and shipped directories, paths outside the project and world writable directories, writes `0600` atomically, adds the file to `.gitignore`, asks before replacing         | `pull.test.ts`, `cli-process.int-spec.ts`                  |
+| Talking to the wrong API                 | `https` required except on loopback; protocol version check through `GET /api/v1/meta` before sign in                                                                                                                     | `config.test.ts`, `client.test.ts`                         |
+
+Remaining risks:
+
+1. A child process, the same operating system user and administrators can read values
+   injected by `envvault run`; Node.js cannot erase strings from memory.
+2. A compromised developer machine can use the CLI session until it expires or is revoked.
+3. The reference deployment does not publish the API (section 2); CLI use against it needs
+   an HTTPS route to the API, which has not been designed or reviewed yet.
+4. Device and session tables are cleaned only by expiry checks; no purge job removes old
+   rows yet.
+5. Windows behaviour (credential manager, signals, file ACLs) is covered by unit tests only.

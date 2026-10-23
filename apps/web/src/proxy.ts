@@ -39,5 +39,6 @@ export const config = {
     '/notifications/:path*',
     '/settings/:path*',
     '/design-system/:path*',
+    '/cli/:path*',
   ],
 };

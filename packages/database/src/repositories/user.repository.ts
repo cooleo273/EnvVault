@@ -142,6 +142,12 @@ export class UserRepository {
    * callers must have authorized access to `workspaceId` first, and readers
    * must re-check membership before using it.
    */
+  /** The profile of an EnvVault user id (CLI sessions carry the id, not a Neon token). */
+  async findProfile(userId: string): Promise<UserProfile | null> {
+    const row = await this.db.user.findUnique({ where: { id: userId }, select: profileSelect });
+    return row ? toProfile(row) : null;
+  }
+
   async setLastWorkspace(userId: string, workspaceId: string | null): Promise<void> {
     await this.db.user.update({ where: { id: userId }, data: { lastWorkspaceId: workspaceId } });
   }

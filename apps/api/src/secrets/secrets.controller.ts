@@ -33,6 +33,7 @@ import {
   CurrentEnvironment,
   CurrentPrincipal,
   RequireEnvironmentPermission,
+  AllowCliToken,
 } from '../auth/auth.decorators.js';
 import type { AuthenticatedRequest, AuthorizedEnvironment, Principal } from '../auth/principal.js';
 import { NoStoreInterceptor } from '../common/no-store.interceptor.js';
@@ -70,6 +71,7 @@ export class SecretsController {
 
   /** Metadata only: never decrypts. */
   @Get()
+  @AllowCliToken()
   @RequireEnvironmentPermission('secret:list')
   @AllowArchived('workspace', 'project', 'environment')
   list(

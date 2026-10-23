@@ -27,7 +27,7 @@ stays possible, but there is no microservice split at this stage.
 | --------------------------- | -------------------- | ------------------------------------------------------------------------------------------- |
 | `apps/web`                  | `@envvault/web`      | Next.js App Router frontend (Server Components by default, Tailwind CSS, shadcn/ui)         |
 | `apps/api`                  | `@envvault/api`      | NestJS REST API, the system's trust boundary                                                |
-| `apps/cli`                  | `@envvault/cli`      | `envvault` command-line client (currently `health`; secret commands come later)             |
+| `apps/cli`                  | `@envvault/cli`      | `envvault` command line client: sign in, project linking, `run`, `pull`, `doctor`           |
 | `packages/shared`           | `@envvault/shared`   | Framework-agnostic contracts: Zod schemas, API constants, request-ID rules                  |
 | `packages/sdk`              | `@envvault/sdk`      | Typed REST client used by the CLI and, later, external consumers                            |
 | `packages/database`         | `@envvault/database` | Prisma schema, migrations and client factory (**server-only**)                              |
@@ -345,7 +345,21 @@ See [authentication.md](authentication.md) for the full design.
   [environments.md](environments.md).
 - The API publishes an OpenAPI 3.0 document at `GET /api/v1/openapi.json`, generated from
   the request schemas; a test fails if a route is registered but not documented.
-- Machine identities (CLI, CI/CD) will use scoped, expiring credentials (later phase).
+- The CLI signs in through an EnvVault brokered device authorization (Neon Auth has no
+  CLI flow): the person approves in the browser with a password confirmation, and the
+  API issues an opaque access token (1 hour) and a rotating refresh token (30 days, within
+  a 90 day session), stored as SHA-256 hashes in `cli_sessions`. The authentication guard
+  accepts CLI tokens only on routes marked `@AllowCliToken()` (reads, runtime load,
+  readiness, export, own sessions); every other route returns `403 CLI_TOKEN_NOT_ALLOWED`.
+  See [cli-authentication.md](cli-authentication.md).
+- `POST …/environments/:id/runtime` returns decrypted values for `envvault run`. It needs
+  the separate `secret:runtime` permission (not implied by `secret:export` or
+  `secret:read`), applies step up on protected environments, per user and per environment
+  rate limits, a value count and response size ceiling, `no-store`, and audits
+  `secret.runtime_loaded` with ids only. See [cli.md](cli.md).
+- `GET /api/v1/meta` publishes the API protocol version; the SDK's `checkCompatibility()`
+  lets clients refuse an incompatible API before sending credentials.
+- CI/CD machine identities (service tokens) are a later phase.
 
 ## 9. Testing strategy
 
@@ -403,7 +417,8 @@ developer's real database.
   adds environment comparison, one level configuration inheritance, validation rules with
   readiness checks, and snapshots with drift and restore. Phase 3E adds key rotation tooling,
   keyring backups, retention, shared rate limits, audit seals, idempotency and deployment
-  configuration; see [security-hardening.md](security-hardening.md) for what remains.
+  configuration; see [security-hardening.md](security-hardening.md) for what remains. Phase
+  4A adds the developer CLI with device sign in, runtime loading and `.env` export.
 - Readiness is evaluated on request; snapshots are manual (no schedules or retention).
 - Protected-environment approvals are modelled (`required_approvals`, change request
   tables) but not enforced; no approval workflow runs yet.
@@ -427,3 +442,6 @@ developer's real database.
   landing page test ignores that one console error; it cannot occur over https.
 - The deployment configuration in `infrastructure/deployment` has not been built or run.
 - Web CSP allows inline scripts until a nonce based CSP is introduced.
+- The CLI is tested on macOS and Linux; Windows is covered by unit tests only. It is not
+  published to a registry. Values loaded by `envvault run` are readable by the child, by
+  the same operating system user and by administrators ([cli.md](cli.md#envvault-run)).

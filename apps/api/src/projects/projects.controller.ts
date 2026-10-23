@@ -41,6 +41,7 @@ import {
   RequireProjectPermission,
   RequireStepUp,
   RequireWorkspacePermission,
+  AllowCliToken,
 } from '../auth/auth.decorators.js';
 import type {
   AuthenticatedRequest,
@@ -74,6 +75,7 @@ export class ProjectsController {
   constructor(private readonly database: DatabaseService) {}
 
   @Get()
+  @AllowCliToken()
   @RequireWorkspacePermission('workspace:read')
   @AllowArchived('workspace')
   async list(
@@ -134,6 +136,7 @@ export class ProjectsController {
   }
 
   @Get(':projectId')
+  @AllowCliToken()
   @RequireProjectPermission('project:read')
   @AllowArchived('workspace', 'project')
   async get(

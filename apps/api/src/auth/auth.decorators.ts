@@ -13,6 +13,7 @@ export const ALLOW_UNVERIFIED_EMAIL_KEY = 'envvault:auth:allow-unverified-email'
 export const AUTHORIZATION_KEY = 'envvault:auth:authorization';
 export const REQUIRE_STEP_UP_KEY = 'envvault:auth:require-step-up';
 export const ALLOW_ARCHIVED_KEY = 'envvault:auth:allow-archived';
+export const CLI_ACCESS_KEY = 'envvault:auth:cli-access';
 
 export type ArchivableLevel = 'workspace' | 'project' | 'environment';
 
@@ -24,6 +25,14 @@ export type AuthorizationRequirement =
 
 /** Opts a route out of authentication (health probes). Use sparingly. */
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
+
+/**
+ * Accepts CLI access tokens on this route. Routes without it refuse them
+ * (CLI_TOKEN_NOT_ALLOWED), so a CLI session can only read what local
+ * development needs: identity, workspaces, projects, environments,
+ * variable metadata, runtime values and exports.
+ */
+export const AllowCliToken = () => SetMetadata(CLI_ACCESS_KEY, true);
 
 /** Allows callers whose email is not verified yet (e.g. GET /me, logout). */
 export const AllowUnverifiedEmail = () => SetMetadata(ALLOW_UNVERIFIED_EMAIL_KEY, true);
