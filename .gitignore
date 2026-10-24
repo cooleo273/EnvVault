@@ -85,3 +85,12 @@ recovery-key*.json
 *keyring-backup*.json
 integrity*.json
 infrastructure/deployment/env/*.env
+
+# Python (packages/sdk-python)
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/

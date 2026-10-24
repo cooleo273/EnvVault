@@ -1,0 +1,14 @@
+{
+  "name": "@envvault/example-node-backend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Example: a Node.js backend that loads its configuration from EnvVault at startup",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "typecheck": "node --check server.mjs"
+  },
+  "dependencies": {
+    "@envvault/sdk": "workspace:*"
+  }
+}

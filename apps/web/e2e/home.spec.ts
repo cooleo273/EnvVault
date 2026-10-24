@@ -63,3 +63,9 @@ test.describe('production build on a phone', () => {
     }
   });
 });
+
+test('the API reference explains when the API cannot be reached', async ({ page }) => {
+  await page.goto('/developers/api');
+  await expect(page.getByRole('heading', { level: 1, name: 'API reference' })).toBeVisible();
+  await expect(page.getByText('The API description is not available')).toBeVisible();
+});

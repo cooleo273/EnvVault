@@ -4,7 +4,7 @@ A centralized environment variable and secrets management platform for developer
 teams and enterprises: workspaces, projects, unlimited custom environments, and
 encrypted, versioned, audited secrets.
 
-> **Status: Phase 4B (machine identities, service credentials and CI/CD authentication).**
+> **Status: Phase 4C (public API conventions, TypeScript and Python SDKs, developer documentation).**
 > Authentication runs on **Neon Auth**. Workspaces, members and invitations (Phase 1), and
 > projects, custom environments and per environment access (Phase 2), are implemented.
 > Phase 3A added envelope encryption (AES-256-GCM, one data key per secret version); Phase 3B
@@ -13,7 +13,8 @@ encrypted, versioned, audited secrets.
 > inheritance, validation and snapshots; Phase 3E adds key rotation tooling, encrypted keyring
 > backups, retention, shared rate limits, audit seals, idempotency and deployment configuration;
 > Phase 4A adds the `envvault` CLI with browser approved sign in and `envvault run`; Phase 4B adds
-> machine identities with service credentials for CI pipelines and servers.
+> machine identities with service credentials for CI pipelines and servers; Phase 4C documents
+> the public API, extends the TypeScript SDK, adds a Python SDK, examples and an API reference page.
 > **Do not store real secrets in EnvVault yet**: keys are self managed on the API host and the
 > remaining production blockers are listed in
 > [docs/security-hardening.md](docs/security-hardening.md#10-remaining-risks-and-production-blockers).
@@ -49,9 +50,15 @@ the `envvault` CLI: commands, `run` and `pull`, exit codes, platforms and the de
 flow. [docs/machine-identities.md](docs/machine-identities.md),
 [docs/service-credentials.md](docs/service-credentials.md) and
 [docs/ci-authentication.md](docs/ci-authentication.md) cover machine identities, credential
-issue, exchange, rotation and revocation, and CI examples. [docs/roadmap.md](docs/roadmap.md)
+issue, exchange, rotation and revocation, and CI examples.
+[docs/developer-guide.md](docs/developer-guide.md) is the starting point for using EnvVault from
+code; [docs/api-reference.md](docs/api-reference.md),
+[docs/api-authentication.md](docs/api-authentication.md) and
+[docs/api-versioning.md](docs/api-versioning.md) cover the REST API's conventions, callers and
+compatibility policy; [docs/sdk-typescript.md](docs/sdk-typescript.md) and
+[docs/sdk-python.md](docs/sdk-python.md) cover the SDKs. [docs/roadmap.md](docs/roadmap.md)
 lists completed and planned phases. The API's OpenAPI document is served
-at `GET /api/v1/openapi.json`. UI conventions are in
+at `GET /api/v1/openapi.json`, and `/developers/api` in the web app renders it. UI conventions are in
 [docs/design-system.md](docs/design-system.md); open `/design-system` in the running
 app for the component reference.
 
@@ -61,16 +68,18 @@ app for the component reference.
 apps/
   web/                 Next.js App Router frontend (Tailwind CSS, shadcn/ui)
   api/                 NestJS REST API
-  cli/                 envvault command-line client
+  cli/                 envvault command line client
 packages/
   shared/              Zod schemas and API contracts shared by all apps
   sdk/                 Typed TypeScript client for the REST API
+  sdk-python/          Python SDK (machine identities, runtime configuration, runner)
   database/            Prisma schema, migrations and client (server-only)
   crypto/              Envelope encryption boundary (server-only)
   config/              Shared TypeScript / ESLint / Prettier config
 infrastructure/
   docker/              Docker Compose for PostgreSQL and Redis
   deployment/          Deployment manifests (planned)
+examples/              Node.js, Next.js, Python and CI examples (placeholder credentials)
 docs/                  Architecture documentation
 ```
 
@@ -145,6 +154,31 @@ envvault run --env qa -- npm run build
 ```
 
 See [docs/ci-authentication.md](docs/ci-authentication.md).
+
+### Using the SDKs
+
+```ts
+import { machineClientFromEnvironment } from '@envvault/sdk/node';
+
+const envvault = machineClientFromEnvironment(); // ENVVAULT_API_URL, ENVVAULT_SERVICE_CREDENTIAL
+const config = await envvault.runtimeValues('staging');
+```
+
+```python
+from envvault import EnvVaultClient
+
+with EnvVaultClient.from_environment() as client:
+    config = client.get_runtime_config(environment="staging")
+```
+
+Neither SDK is published yet. The Python SDK needs a virtual environment for its tests and for
+the API integration suite:
+
+```bash
+cd packages/sdk-python && python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+```
+
+See [docs/developer-guide.md](docs/developer-guide.md) and `examples/`.
 
 ## Scripts
 

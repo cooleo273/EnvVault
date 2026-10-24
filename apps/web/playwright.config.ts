@@ -24,6 +24,8 @@ export default defineConfig({
       NEON_AUTH_BASE_URL: 'https://auth.example.invalid/neondb/auth',
       NEON_AUTH_COOKIE_SECRET: 'e2e-only-cookie-secret-0123456789abcdef',
       APP_BASE_URL: 'https://envvault.example.invalid',
+      // A closed port, so results never depend on an API a developer has running locally.
+      API_INTERNAL_URL: 'http://127.0.0.1:9',
     },
     reuseExistingServer: false,
     timeout: 120_000,

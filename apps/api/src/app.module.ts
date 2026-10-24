@@ -1,5 +1,5 @@
 import { type DynamicModule, Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule, type ThrottlerStorage } from '@nestjs/throttler';
 import { RateLimitModule } from './rate-limit/rate-limit.module.js';
 import { RATE_LIMIT_STORAGE } from './rate-limit/sensitive-rate-limiter.js';
@@ -28,6 +28,7 @@ import { ProjectsModule } from './projects/projects.module.js';
 import { RetentionModule } from './retention/retention.module.js';
 import { CliAuthModule } from './cli-auth/cli-auth.module.js';
 import { MachineModule } from './machine/machine.module.js';
+import { DeprecationInterceptor } from './common/deprecation.js';
 import { SecretsModule } from './secrets/secrets.module.js';
 import { WorkspacesModule } from './workspaces/workspaces.module.js';
 
@@ -97,6 +98,7 @@ export class AppModule {
         { provide: APP_GUARD, useClass: UserRateLimitGuard },
         { provide: APP_GUARD, useClass: AuthorizationGuard },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
+        { provide: APP_INTERCEPTOR, useClass: DeprecationInterceptor },
       ],
     };
   }

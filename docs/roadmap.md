@@ -15,7 +15,7 @@ tested on a branch; nothing here is production ready (see
 | 3E    | Security hardening, key recovery, deployment readiness                   | Completed (PR #1 open, not merged)             |
 | 4A    | Developer CLI: browser sign in, project linking, `run`, `pull`, `doctor` | Completed (local branch, not pushed)           |
 | 4B    | Machine identities, service credentials, CI/CD authentication            | Implemented (local commit 64d5665, not pushed) |
-| 4C    | Public API and SDK                                                       | Next                                           |
+| 4C    | Public API conventions, TypeScript and Python SDKs, developer docs       | Implemented (local branch, not committed)      |
 | 5     | Deployment integrations                                                  | Planned                                        |
 | 6     | Approvals and collaboration                                              | Planned                                        |
 | 7     | Monitoring and rotation                                                  | Planned                                        |
@@ -45,13 +45,38 @@ Not in 4B:
 - OIDC workload identity federation (planned, schema reserved).
 - Deployment synchronization (Phase 5).
 
+## Phase 4C (implemented)
+
+Implemented on `phase-4c/api-sdk-ecosystem`:
+
+- API conventions documented and enforced: one error envelope with a published code
+  catalog, three pagination styles, idempotency keys, request ids, rate limit headers,
+  deprecation headers (`Deprecation`, `Sunset`, `Link`) and a versioning policy.
+- OpenAPI access metadata (callers, permissions, step up, deprecation) generated from
+  the decorators the guards enforce, with a test that fails on drift.
+- No new authentication: people, CLI tokens and machine tokens only; no personal API keys.
+- TypeScript SDK: `EnvVaultMachineClient`, `@envvault/sdk/node`, cancellation,
+  rate limit metadata and opt in retries for safe requests, pagination iterators,
+  request ids on errors, package metadata, README and changelog.
+- Python SDK (`packages/sdk-python`): sync and async clients, machine credential
+  exchange and renewal, typed models and errors, `python -m envvault run`.
+- `/developers/api` reference page (read only, no request console, no tokens).
+- Examples for Node.js, Next.js, Python and CI, run against a local API in tests.
+- Docs: [developer-guide.md](developer-guide.md), [api-reference.md](api-reference.md),
+  [api-authentication.md](api-authentication.md), [api-versioning.md](api-versioning.md),
+  [sdk-typescript.md](sdk-typescript.md), [sdk-python.md](sdk-python.md).
+
+Not in 4C:
+
+- Publishing either SDK (both are marked private until the licence and registries are
+  decided; release steps are documented).
+- Deployment platform integrations (Phase 5).
+
 ## Later phases
 
-Phase 4C is next. The outlines below are placeholders until each phase is specified.
+Phase 5 is next. The outlines below are placeholders until each phase is specified.
 
-- **4C, Public API and SDK (next).** A documented, versioned public surface and a
-  published SDK and CLI.
-- **5, Deployment integrations.** Delivering configuration to hosting and
+- **5, Deployment integrations (next).** Delivering configuration to hosting and
   deployment platforms with machine identities.
 - **6, Approvals and collaboration.** Enforcing the change request and
   approval model that protected environments already store.

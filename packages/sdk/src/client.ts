@@ -1,3 +1,4 @@
+import { paginate, paginateBefore, paginateCursor } from './pagination.js';
 import {
   type CreateMachineGrantInput,
   type CreateMachineIdentityInput,
@@ -148,6 +149,7 @@ import {
   acceptedInvitationSchema,
   API_BASE_PATH,
   apiErrorResponseSchema,
+  REQUEST_ID_HEADER,
   type CreateInvitationInput,
   type CreateWorkspaceInput,
   healthResponseSchema,
@@ -177,6 +179,7 @@ import {
 } from '@envvault/shared';
 import { z } from 'zod';
 import {
+  EnvVaultAbortError,
   EnvVaultApiError,
   EnvVaultIncompatibleApiError,
   EnvVaultNetworkError,
@@ -203,6 +206,16 @@ export interface EnvVaultClientOptions {
   retries?: number;
   /** Sent as User-Agent where the runtime allows it (Node does). */
   userAgent?: string;
+  /**
+   * Retries after a 429 by waiting `Retry-After`, for requests that are safe
+   * to repeat (as above). Default 0: rate limits surface as
+   * EnvVaultApiError with `retryAfterSeconds`.
+   */
+  rateLimitRetries?: number;
+  /** Longest `Retry-After` to wait for; longer ones are surfaced instead. Default 30000. */
+  maxRetryAfterMs?: number;
+  /** Cancels every request of this client (see also `withSignal`). */
+  signal?: AbortSignal;
 }
 
 interface RequestOptions<T> {
@@ -224,6 +237,7 @@ export class EnvVaultClient {
   private readonly getAccessToken: (() => Promise<string | null>) | undefined;
   private readonly options: EnvVaultClientOptions;
   private idempotencyKey: string | undefined;
+  private signal: AbortSignal | undefined;
 
   constructor(options: EnvVaultClientOptions) {
     this.options = options;
@@ -235,6 +249,14 @@ export class EnvVaultClient {
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.timeoutMs = options.timeoutMs ?? 10_000;
     this.getAccessToken = options.getAccessToken;
+    this.signal = options.signal;
+  }
+
+  private scoped(change: { idempotencyKey?: string; signal?: AbortSignal }): EnvVaultClient {
+    const scoped = new EnvVaultClient(this.options);
+    scoped.idempotencyKey = change.idempotencyKey ?? this.idempotencyKey;
+    scoped.signal = change.signal ?? this.signal;
+    return scoped;
   }
 
   /**
@@ -243,9 +265,16 @@ export class EnvVaultClient {
    * one instead of running twice. Use a fresh key per user action.
    */
   withIdempotencyKey(key: string): EnvVaultClient {
-    const scoped = new EnvVaultClient(this.options);
-    scoped.idempotencyKey = key;
-    return scoped;
+    return this.scoped({ idempotencyKey: key });
+  }
+
+  /**
+   * A client whose requests stop when `signal` aborts (EnvVaultAbortError).
+   * A mutation already received by the server may still complete; pair it
+   * with an idempotency key to retry safely.
+   */
+  withSignal(signal: AbortSignal): EnvVaultClient {
+    return this.scoped({ signal });
   }
 
   /** Liveness check: `GET /api/v1/health`. */
@@ -1270,7 +1299,10 @@ export class EnvVaultClient {
   }
 
   async revokeCliSession(sessionId: string): Promise<void> {
-    await this.request(`/cli/sessions/${sessionId}`, { method: 'DELETE', schema: noContentSchema });
+    await this.request(`/cli/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      schema: noContentSchema,
+    });
   }
 
   /** Decrypted values for a local process. Needs `secret:runtime`; never cached. */
@@ -1522,14 +1554,16 @@ export class EnvVaultClient {
   }
 
   retentionPolicy(workspaceId: string): Promise<RetentionPolicy> {
-    return this.request(`/workspaces/${workspaceId}/retention`, { schema: retentionPolicySchema });
+    return this.request(`${workspacePath(workspaceId)}/retention`, {
+      schema: retentionPolicySchema,
+    });
   }
 
   updateRetentionPolicy(
     workspaceId: string,
     input: RetentionPolicyInput,
   ): Promise<RetentionPolicy> {
-    return this.request(`/workspaces/${workspaceId}/retention`, {
+    return this.request(`${workspacePath(workspaceId)}/retention`, {
       method: 'PUT',
       body: input,
       schema: retentionPolicySchema,
@@ -1537,7 +1571,7 @@ export class EnvVaultClient {
   }
 
   previewRetention(workspaceId: string): Promise<RetentionPreview> {
-    return this.request(`/workspaces/${workspaceId}/retention/preview`, {
+    return this.request(`${workspacePath(workspaceId)}/retention/preview`, {
       method: 'POST',
       schema: retentionPreviewSchema,
     });
@@ -1545,7 +1579,7 @@ export class EnvVaultClient {
 
   /** Queues a purge. Needs workspace:delete, a recent step up and the slug as confirmation. */
   startRetentionRun(workspaceId: string, confirm: string): Promise<MaintenanceJob> {
-    return this.request(`/workspaces/${workspaceId}/retention/runs`, {
+    return this.request(`${workspacePath(workspaceId)}/retention/runs`, {
       method: 'POST',
       body: { confirm },
       schema: maintenanceJobSchema,
@@ -1553,15 +1587,87 @@ export class EnvVaultClient {
   }
 
   retentionRuns(workspaceId: string): Promise<{ items: MaintenanceJob[] }> {
-    return this.request(`/workspaces/${workspaceId}/retention/runs`, {
+    return this.request(`${workspacePath(workspaceId)}/retention/runs`, {
       schema: z.object({ items: z.array(maintenanceJobSchema) }),
     });
   }
 
   retentionRun(workspaceId: string, jobId: string): Promise<MaintenanceJob> {
-    return this.request(`/workspaces/${workspaceId}/retention/runs/${jobId}`, {
-      schema: maintenanceJobSchema,
-    });
+    return this.request(
+      `${workspacePath(workspaceId)}/retention/runs/${encodeURIComponent(jobId)}`,
+      {
+        schema: maintenanceJobSchema,
+      },
+    );
+  }
+
+  /* --------------------------------------------------------- iteration */
+
+  /** Every project of a workspace the caller can see, fetched page by page. */
+  iterateProjects(workspaceId: string, query: Omit<ListProjectsQuery, 'page'> = {}) {
+    return paginate((page) => this.listProjects(workspaceId, { ...query, page, pageSize: 100 }));
+  }
+
+  iterateEnvironments(
+    workspaceId: string,
+    projectId: string,
+    query: Omit<ListEnvironmentsQuery, 'page'> = {},
+  ) {
+    return paginate((page) =>
+      this.listEnvironments(workspaceId, projectId, { ...query, page, pageSize: 100 }),
+    );
+  }
+
+  /** Variable metadata (never values) of an environment. */
+  iterateSecrets(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    query: Omit<ListSecretsQuery, 'page'> = {},
+  ) {
+    return paginate((page) =>
+      this.listSecrets(workspaceId, projectId, environmentId, { ...query, page, pageSize: 100 }),
+    );
+  }
+
+  iterateSecretVersions(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+  ) {
+    return paginateBefore((before) =>
+      this.listSecretVersions(workspaceId, projectId, environmentId, secretId, {
+        ...(before === undefined ? {} : { before }),
+      }),
+    );
+  }
+
+  iterateSnapshots(workspaceId: string, projectId: string, environmentId: string) {
+    return paginate((page) =>
+      this.listSnapshots(workspaceId, projectId, environmentId, { page, pageSize: 100 }),
+    );
+  }
+
+  iterateProjectActivity(
+    workspaceId: string,
+    projectId: string,
+    query: Omit<ActivityQuery, 'cursor'> = {},
+  ) {
+    return paginateCursor((cursor) =>
+      this.projectActivity(workspaceId, projectId, {
+        ...query,
+        ...(cursor === undefined ? {} : { cursor }),
+      }),
+    );
+  }
+
+  iterateMachineIdentityActivity(workspaceId: string, projectId: string, identityId: string) {
+    return paginateCursor((cursor) =>
+      this.machineIdentityActivity(workspaceId, projectId, identityId, {
+        ...(cursor === undefined ? {} : { cursor }),
+      }),
+    );
   }
 
   private async request<T>(path: string, options: RequestOptions<T>): Promise<T> {
@@ -1588,19 +1694,26 @@ export class EnvVaultClient {
     // Repeating is only safe for reads and for mutations the server can deduplicate.
     const repeatable = method === 'GET' || this.idempotencyKey !== undefined;
     const attempts = 1 + (repeatable ? Math.max(0, this.options.retries ?? 0) : 0);
+    const rateLimitAttempts = repeatable ? Math.max(0, this.options.rateLimitRetries ?? 0) : 0;
+    const maxWait = this.options.maxRetryAfterMs ?? 30_000;
+    const cancel = this.signal;
 
     let response: Response | undefined;
+    let rateLimited = 0;
     for (let attempt = 1; ; attempt++) {
+      if (cancel?.aborted) throw new EnvVaultAbortError();
+      const timeout = AbortSignal.timeout(this.timeoutMs);
       try {
         response = await this.fetchImpl(`${this.baseUrl}${API_BASE_PATH}${path}`, {
           method,
           headers,
           ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
-          signal: AbortSignal.timeout(this.timeoutMs),
+          signal: cancel ? AbortSignal.any([timeout, cancel]) : timeout,
         });
       } catch (error) {
+        if (cancel?.aborted) throw new EnvVaultAbortError();
         if (attempt < attempts) {
-          await backoff(attempt);
+          await pause(backoffMs(attempt), cancel);
           continue;
         }
         const name = (error as Error | undefined)?.name;
@@ -1610,7 +1723,19 @@ export class EnvVaultClient {
       }
       if (attempt < attempts && [502, 503, 504].includes(response.status)) {
         await response.body?.cancel().catch(() => undefined);
-        await backoff(attempt);
+        await pause(backoffMs(attempt), cancel);
+        continue;
+      }
+      const wait = retryAfterMs(response);
+      if (
+        response.status === 429 &&
+        rateLimited < rateLimitAttempts &&
+        wait !== undefined &&
+        wait <= maxWait
+      ) {
+        rateLimited++;
+        await response.body?.cancel().catch(() => undefined);
+        await pause(wait, cancel);
         continue;
       }
       break;
@@ -1620,9 +1745,14 @@ export class EnvVaultClient {
 
     if (!response.ok && !(options.acceptedErrorStatuses ?? []).includes(response.status)) {
       const parsedError = apiErrorResponseSchema.safeParse(body);
+      const wait = retryAfterMs(response);
       throw new EnvVaultApiError(
         response.status,
         parsedError.success ? parsedError.data.error : undefined,
+        {
+          retryAfterSeconds: wait === undefined ? undefined : Math.ceil(wait / 1000),
+          requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+        },
       );
     }
 
@@ -1634,9 +1764,37 @@ export class EnvVaultClient {
   }
 }
 
-function backoff(attempt: number): Promise<void> {
-  const delay = Math.min(2000, 200 * 2 ** (attempt - 1)) * (0.5 + Math.random() / 2);
-  return new Promise((resolve) => setTimeout(resolve, delay));
+function backoffMs(attempt: number): number {
+  return Math.min(2000, 200 * 2 ** (attempt - 1)) * (0.5 + Math.random() / 2);
+}
+
+/** Waits `ms`, or rejects with EnvVaultAbortError as soon as `signal` aborts. */
+function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new EnvVaultAbortError());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new EnvVaultAbortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/** `Retry-After` as milliseconds (seconds or an HTTP date), when present and sane. */
+function retryAfterMs(response: Response): number | undefined {
+  const value = response.headers.get('retry-after');
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
 }
 
 /** An invitation by link token, or by id when it is addressed to the signed-in user. */

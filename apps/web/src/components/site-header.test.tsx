@@ -14,6 +14,8 @@ describe('SiteHeader', () => {
   it('renders labelled primary navigation', () => {
     render(<SiteHeader />);
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Roadmap' })).toHaveAttribute('href', '#roadmap');
+    // Absolute anchors, so the links also work from pages other than the landing page.
+    expect(screen.getByRole('link', { name: 'Roadmap' })).toHaveAttribute('href', '/#roadmap');
+    expect(screen.getByRole('link', { name: 'API' })).toHaveAttribute('href', '/developers/api');
   });
 });

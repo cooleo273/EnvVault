@@ -2,9 +2,10 @@ import { KeyRound } from 'lucide-react';
 import Link from 'next/link';
 
 const NAV_ITEMS = [
-  { href: '#capabilities', label: 'Capabilities' },
-  { href: '#security', label: 'Security' },
-  { href: '#roadmap', label: 'Roadmap' },
+  { href: '/#capabilities', label: 'Capabilities' },
+  { href: '/#security', label: 'Security' },
+  { href: '/#roadmap', label: 'Roadmap' },
+  { href: '/developers/api', label: 'API' },
 ];
 
 export function SiteHeader() {

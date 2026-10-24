@@ -7,13 +7,26 @@ export class EnvVaultApiError extends Error {
   /** Field level validation problems (paths and messages, never submitted values). */
   readonly issues: ValidationIssue[] | undefined;
 
-  constructor(statusCode: number, body: ApiErrorResponse['error'] | undefined) {
+  /** Seconds to wait before retrying, from `Retry-After` (rate limits, 503). */
+  readonly retryAfterSeconds: number | undefined;
+
+  constructor(
+    statusCode: number,
+    body: ApiErrorResponse['error'] | undefined,
+    meta: { retryAfterSeconds?: number | undefined; requestId?: string | undefined } = {},
+  ) {
     super(body?.message ?? `EnvVault API request failed with status ${statusCode}`);
     this.name = 'EnvVaultApiError';
     this.statusCode = statusCode;
     this.code = body?.code ?? 'UNKNOWN_ERROR';
-    this.requestId = body?.requestId;
+    this.requestId = body?.requestId ?? meta.requestId;
     this.issues = body?.issues;
+    this.retryAfterSeconds = meta.retryAfterSeconds;
+  }
+
+  /** Rate limited: wait `retryAfterSeconds` before trying again. */
+  get isRateLimited(): boolean {
+    return this.statusCode === 429;
   }
 }
 
@@ -33,6 +46,14 @@ export class EnvVaultNetworkError extends Error {
         : 'The EnvVault API could not be reached',
     );
     this.name = 'EnvVaultNetworkError';
+  }
+}
+
+/** The caller cancelled the request through its AbortSignal. */
+export class EnvVaultAbortError extends Error {
+  constructor() {
+    super('The EnvVault API request was cancelled');
+    this.name = 'EnvVaultAbortError';
   }
 }
 

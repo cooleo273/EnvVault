@@ -1,6 +1,8 @@
 # EnvVault Architecture
 
-> Status: **Phase 3C: import, export, version history, rollback and bulk operations** (on top of Phase 3B secrets CRUD, Phase 3A envelope encryption and Phase 2 projects, environments and hierarchical authorization). This document describes the architecture as
+> Status: **Phase 4C: public API conventions, TypeScript and Python SDKs** (on top of
+> machine identities in 4B, the CLI in 4A, and the secrets, encryption, projects and
+> authorization layers of Phases 1 to 3). This document describes the architecture as
 > implemented today and the boundaries that later phases build on. Sections marked
 > _Planned_ describe intended designs that are not implemented yet.
 
@@ -23,19 +25,21 @@ stays possible, but there is no microservice split at this stage.
 
 ## 2. Repository layout
 
-| Path                        | Package              | Responsibility                                                                              |
-| --------------------------- | -------------------- | ------------------------------------------------------------------------------------------- |
-| `apps/web`                  | `@envvault/web`      | Next.js App Router frontend (Server Components by default, Tailwind CSS, shadcn/ui)         |
-| `apps/api`                  | `@envvault/api`      | NestJS REST API, the system's trust boundary                                                |
-| `apps/cli`                  | `@envvault/cli`      | `envvault` command line client: sign in, project linking, `run`, `pull`, `doctor`           |
-| `packages/shared`           | `@envvault/shared`   | Framework-agnostic contracts: Zod schemas, API constants, request-ID rules                  |
-| `packages/sdk`              | `@envvault/sdk`      | Typed REST client used by the CLI and, later, external consumers                            |
-| `packages/database`         | `@envvault/database` | Prisma schema, migrations and client factory (**server-only**)                              |
-| `packages/crypto`           | `@envvault/crypto`   | Envelope-encryption boundary: KMS provider interface + AES-256-GCM cipher (**server-only**) |
-| `packages/config`           | `@envvault/config`   | Shared TypeScript, ESLint and Prettier configuration                                        |
-| `infrastructure/docker`     | —                    | Docker Compose for local PostgreSQL and Redis                                               |
-| `infrastructure/deployment` | —                    | Deployment manifests (_planned_)                                                            |
-| `docs`                      | —                    | Architecture and project documentation                                                      |
+| Path                        | Package                             | Responsibility                                                                              |
+| --------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- |
+| `apps/web`                  | `@envvault/web`                     | Next.js App Router frontend (Server Components by default, Tailwind CSS, shadcn/ui)         |
+| `apps/api`                  | `@envvault/api`                     | NestJS REST API, the system's trust boundary                                                |
+| `apps/cli`                  | `@envvault/cli`                     | `envvault` command line client: sign in, project linking, `run`, `pull`, `doctor`           |
+| `packages/shared`           | `@envvault/shared`                  | Framework-agnostic contracts: Zod schemas, API constants, request-ID rules                  |
+| `packages/sdk`              | `@envvault/sdk`                     | Typed REST client for people, the CLI and machine identities (web server, CLI, examples)    |
+| `packages/sdk-python`       | `envvault` (PyPI name, unpublished) | Python SDK for machine identities: runtime configuration and a process runner               |
+| `examples`                  | `@envvault/example-*`               | Node.js, Next.js, Python and CI examples with placeholder credentials                       |
+| `packages/database`         | `@envvault/database`                | Prisma schema, migrations and client factory (**server-only**)                              |
+| `packages/crypto`           | `@envvault/crypto`                  | Envelope-encryption boundary: KMS provider interface + AES-256-GCM cipher (**server-only**) |
+| `packages/config`           | `@envvault/config`                  | Shared TypeScript, ESLint and Prettier configuration                                        |
+| `infrastructure/docker`     | none                                | Docker Compose for local PostgreSQL and Redis                                               |
+| `infrastructure/deployment` | none                                | Deployment manifests (_planned_)                                                            |
+| `docs`                      | none                                | Architecture and project documentation                                                      |
 
 ### Package dependency rules
 
@@ -236,13 +240,43 @@ can be turned off with 0. Operator commands (`apps/api/src/ops`, run with `pnpm 
 key rotation, rewrap, retirement, keyring backup and restore, and audit sealing and
 verification; they read the same configuration as the API.
 
+### 4.9 Public API surface (Phase 4C)
+
+There is one API (`/api/v1`) for the web app, the CLI, machine identities and SDKs; no
+separate public gateway or key mechanism exists. Its published contract is generated, not
+written by hand:
+
+- **Schemas** come from the Zod validators in `@envvault/shared` that the routes run.
+- **Access metadata** comes from `RouteAccessService` (`apps/api/src/openapi/route-access.ts`),
+  which reads the same decorators the guards enforce (`@Public`, `@AllowCliToken`,
+  `@MachineRoute`, permissions, step up, `@Deprecated`) through Nest's discovery service.
+  Each operation publishes `x-envvault-callers`, `x-envvault-permission`,
+  `x-envvault-gate-permission` and `x-envvault-step-up`.
+- **Error codes** come from `API_ERROR_CATALOG` and are published as
+  `x-envvault-error-codes`.
+- `apps/api/test/openapi.int-spec.ts` fails when a route is missing from the document, when
+  the documented callers or permissions differ from the decorators, when operation ids
+  repeat, when a schema reference or security scheme does not resolve, when an operation
+  lacks its `429` response, or when the published error codes differ from the catalog.
+
+`DeprecationInterceptor` adds `Deprecation`, `Sunset` and `Link` headers to routes marked
+`@Deprecated` ([api-versioning.md](api-versioning.md)). Conventions for errors, pagination,
+idempotency and request ids are in [api-reference.md](api-reference.md); callers and token
+routing in [api-authentication.md](api-authentication.md).
+
+The SDKs are clients of this contract only. All decryption, authorization, rate limiting and
+audit stay in the API; the Python SDK implements no cryptography, and both SDKs retry only
+requests that are safe to repeat.
+
 ## 5. Web (apps/web)
 
 See **[design-system.md](design-system.md)** for tokens, components and module guidelines.
 
 - **Next.js App Router**; pages are React Server Components by default. Client
   components are limited to interactive pieces (navigation, menus, dialogs, tables).
-- **Route groups:** `(marketing)` for the landing page and `(app)` for the dashboard
+- **Route groups:** `(marketing)` for the landing page and the API reference
+  (`/developers/api`, rendered server side from the OpenAPI document, read only, no tokens)
+  and `(app)` for the dashboard
   shell (`/dashboard`, `/workspaces`, `/projects`, `/members`, `/audit-logs`,
   `/integrations`, `/notifications`, `/settings`, `/design-system`), with route-level
   `loading.tsx` and `error.tsx`.
@@ -380,6 +414,9 @@ See [authentication.md](authentication.md) for the full design.
 | Database integration | Vitest against real PostgreSQL | `packages/database/test/integration/*.test.ts` |
 | API integration | Vitest + Supertest, real Postgres, fake Neon JWKS | `apps/api/test/*.int-spec.ts` |
 | Full-stack auth e2e | Playwright: Next dev, API, Postgres, Better Auth stand-in | `apps/web/e2e-auth/*.spec.ts` |
+| TypeScript SDK contract | Vitest, SDK against the real API and Postgres | `apps/api/test/sdk.int-spec.ts` |
+| Python SDK | pytest with an in process fake API; live tests driven by the API suite | `packages/sdk-python/tests`, `apps/api/test/python-sdk.int-spec.ts` |
+| Examples | Node, Python and CI examples against the real API | `apps/api/test/examples.int-spec.ts` |
 
 The API e2e tests build the real `AppModule` and apply the same `configureApp()` as
 production, replacing only the `DatabaseService`, so they need no running database.
@@ -402,6 +439,9 @@ developer's real database.
 4. `e2e-auth`: full-stack sign-up, sign-in, logout, password reset and authorization flows
    against a PostgreSQL service container and a local Better Auth stand-in for Neon Auth.
    No Neon credentials are used in CI.
+5. `python-sdk`: on Python 3.10 and 3.13, Ruff lint and format check, mypy (strict), pytest,
+   package build and `twine check`. The integration job also creates the SDK's virtual
+   environment so the Python and example contract tests run.
 
 ## 11. Key technology decisions
 
@@ -425,7 +465,10 @@ developer's real database.
   keyring backups, retention, shared rate limits, audit seals, idempotency and deployment
   configuration; see [security-hardening.md](security-hardening.md) for what remains. Phase
   4A adds the developer CLI with device sign in, runtime loading and `.env` export. Phase 4B adds
-  machine identities, service credentials and the CLI's machine mode for CI.
+  machine identities, service credentials and the CLI's machine mode for CI. Phase 4C documents
+  the public API, generates its access metadata from the guards, extends the TypeScript SDK,
+  adds the Python SDK, examples and the `/developers/api` reference page. Neither SDK is
+  published.
 - Readiness is evaluated on request; snapshots are manual (no schedules or retention).
 - Protected-environment approvals are modelled (`required_approvals`, change request
   tables) but not enforced; no approval workflow runs yet.

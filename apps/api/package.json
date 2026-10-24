@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@envvault/config": "workspace:*",
+    "@envvault/sdk": "workspace:*",
     "@nestjs/cli": "12.0.8",
     "@nestjs/schematics": "12.0.7",
     "@nestjs/testing": "12.1.3",
