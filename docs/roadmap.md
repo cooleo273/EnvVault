@@ -15,8 +15,9 @@ tested on a branch; nothing here is production ready (see
 | 3E    | Security hardening, key recovery, deployment readiness                   | Completed (PR #1 open, not merged)             |
 | 4A    | Developer CLI: browser sign in, project linking, `run`, `pull`, `doctor` | Completed (local branch, not pushed)           |
 | 4B    | Machine identities, service credentials, CI/CD authentication            | Implemented (local commit 64d5665, not pushed) |
-| 4C    | Public API conventions, TypeScript and Python SDKs, developer docs       | Implemented (local branch, not committed)      |
-| 5     | Deployment integrations                                                  | Planned                                        |
+| 4C    | Public API conventions, TypeScript and Python SDKs, developer docs       | Implemented (local commit 3c9cd95, not pushed) |
+| 5A    | GitHub Actions and CI/CD integration                                     | Next                                           |
+| 5     | Further deployment integrations (hosting platforms, cloud stores)        | Planned                                        |
 | 6     | Approvals and collaboration                                              | Planned                                        |
 | 7     | Monitoring and rotation                                                  | Planned                                        |
 | 8     | Enterprise features                                                      | Planned                                        |
@@ -72,11 +73,44 @@ Not in 4C:
   decided; release steps are documented).
 - Deployment platform integrations (Phase 5).
 
+## Phase 5A preparation (next)
+
+GitHub Actions and CI/CD integration. Not started; this records what it can
+build on and what it has to decide.
+
+In place:
+
+- Machine identities, service credentials, 15 minute access tokens, scopes,
+  per environment grants and audit (4B).
+- CLI machine mode (`envvault auth service`, `envvault run`) and both SDKs (4C).
+- A generic CI script and an example GitHub Actions workflow in
+  `examples/ci-generic`, run against a local API in tests.
+- Reserved schema, unused so far: `OIDC_FEDERATION` credentials with
+  `oidc_issuer`, `oidc_subject` and `oidc_audience`, and
+  `IntegrationConnection` with a `GITHUB` provider.
+
+To decide in the 5A specification:
+
+- Whether jobs authenticate with GitHub's OIDC tokens (no stored secret;
+  needs issuer, audience and subject claim matching, and JWKS verification
+  in the API) or only with service credentials stored as GitHub secrets.
+- How an action is packaged (JavaScript action bundling the SDK, or a
+  composite action installing the CLI), where it lives, and how it is
+  versioned and pinned.
+- How values reach steps: environment of one step only, or exported to later
+  steps; masking with `::add-mask::` for every loaded value; never in
+  outputs or caches.
+- Whether EnvVault also writes to GitHub (repository or environment secrets
+  through a GitHub App), which would use `IntegrationConnection` and
+  envelope encrypted provider credentials.
+- Testing without GitHub: a local OIDC issuer stand in, like the Neon Auth
+  stand in used today.
+
 ## Later phases
 
-Phase 5 is next. The outlines below are placeholders until each phase is specified.
+The outlines below are placeholders until each phase is specified.
 
-- **5, Deployment integrations (next).** Delivering configuration to hosting and
+- **5, Further deployment integrations.** Delivering configuration to hosting and
   deployment platforms with machine identities.
 - **6, Approvals and collaboration.** Enforcing the change request and
   approval model that protected environments already store.
