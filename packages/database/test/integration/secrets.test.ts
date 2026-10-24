@@ -84,7 +84,7 @@ describe('secret storage constraints', () => {
       'secrets_created_by_one_principal_chk',
     );
     const identity = await db.serviceIdentity.create({
-      data: { workspaceId: t.workspaceId, name: 'ci' },
+      data: { workspaceId: t.workspaceId, projectId: t.projectId, name: 'ci' },
     });
     await expectViolation(
       db.secret.create({

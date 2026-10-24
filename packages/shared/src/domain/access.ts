@@ -31,6 +31,8 @@ export const PROJECT_PERMISSIONS: ReadonlySet<PermissionKey> = new Set<Permissio
   'project_member:read',
   'project_member:manage',
   'environment:create',
+  'service_identity:read',
+  'service_identity:manage',
 ]);
 
 /** Permissions evaluated per environment. */
@@ -154,4 +156,59 @@ export function canModifyEnvironment(
   isProtected: boolean,
 ): boolean {
   return permissions.has(action) && (!isProtected || permissions.has('environment:protect'));
+}
+
+/**
+ * Everything a machine identity can ever be allowed: read environment
+ * metadata, list variables, load values at runtime. Never write, export,
+ * reveal or administer. Credential scopes and machine grants are both
+ * confined to this set.
+ */
+export const MACHINE_PERMISSIONS: ReadonlySet<PermissionKey> = new Set<PermissionKey>([
+  'environment:read',
+  'secret:list',
+  'secret:runtime',
+]);
+
+export interface MachineAccessInput {
+  /** The identity's grants on this environment (ALLOW and DENY). */
+  grants: readonly GrantInput[];
+  /** Scopes of the access token (already a subset of its credential's scopes). */
+  scopes: Iterable<string>;
+  now?: Date;
+}
+
+/**
+ * Effective permissions of a machine identity on one environment: its active
+ * ALLOW grants minus its active DENY grants, confined to
+ * {@link MACHINE_PERMISSIONS} and to the token's scopes. Nothing comes from
+ * project roles, workspace roles or the person who created the identity, so
+ * protected environments need an explicit grant like any other.
+ */
+export function evaluateMachinePermissions(input: MachineAccessInput): Set<string> {
+  const now = input.now ?? new Date();
+  const scopes = new Set(input.scopes);
+  const active = input.grants.filter((g) => !g.expiresAt || g.expiresAt > now);
+  const result = new Set<string>();
+  for (const grant of active) {
+    if (grant.effect !== 'ALLOW') continue;
+    for (const key of grant.permissions) {
+      if (MACHINE_PERMISSIONS.has(key as PermissionKey) && scopes.has(key)) result.add(key);
+    }
+  }
+  for (const grant of active) {
+    if (grant.effect !== 'DENY') continue;
+    for (const key of grant.permissions) result.delete(key);
+  }
+  return result;
+}
+
+/** Whether every permission of a role may be held by a machine identity. */
+export function isMachineGrantable(permissions: Iterable<string>): boolean {
+  let any = false;
+  for (const key of permissions) {
+    if (!MACHINE_PERMISSIONS.has(key as PermissionKey)) return false;
+    any = true;
+  }
+  return any;
 }

@@ -169,16 +169,21 @@ MAC), so what remains still verifies.
 
 ## 8. Dependencies and configuration
 
-`pnpm audit:deps` fails on high and critical advisories in production dependencies. Reviewed
-exceptions (`pnpm-workspace.yaml`, `auditConfig`):
+`pnpm audit:deps` fails on high and critical advisories in production dependencies. There are
+no audit exceptions: the `braces` exception (GHSA-vfj7-8cjw-p6xm) was removed on 2026-10-24 once
+the audit stopped reporting it.
 
-| Advisory                   | Package      | Path                  | Why accepted for now                         |
-| -------------------------- | ------------ | --------------------- | -------------------------------------------- |
-| GHSA-vfj7-8cjw-p6xm (high) | braces 3.0.3 | ESLint Next.js plugin | Lint time only; no patched release published |
+Updated on 2026-10-24: `next` 16.4.0 to 16.4.1 (critical remote code execution and high denial
+of service advisories published 2026-10-14), `@next/eslint-plugin-next` to match, and `vitest`
+4.1.11 to 4.1.12 (`@vitest/mocker`, GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp).
 
 `sprintf-js` (moderate) comes from the test only Redis mock and has no patched release.
-Fixed by overrides: `mysql2` 3.24.5 (inside the Prisma CLI under Neon Auth's adapter; never
-loaded) and `deepmerge-ts` 8.0.2 (GHSA-ggr8-5vv4-36mx, in Prisma's config loader). The
+Fixed by overrides, each inside the same major version: `body-parser` 2.4.0 (Express request
+bodies, GHSA-27r3-jxmh-p828), `multer` 2.5.0 (pinned exactly by `@nestjs/platform-express`,
+GHSA-q7qp-rjg7-q26m), `undici` 8.12.2 (jsdom, tests only) and `fast-uri` 3.1.9 (Nest CLI, build
+only), all published 2026-10-22 to 2026-10-24; `zod` 4.6.6 for the peer Neon Auth's `better-call`
+had resolved to 4.5.4 (GHSA-mrhx-c7xc-m3w5, memory exhaustion), `mysql2` 3.24.5 (inside the Prisma CLI under
+Neon Auth's adapter; never loaded) and `deepmerge-ts` 8.0.2 (GHSA-ggr8-5vv4-36mx, in Prisma's config loader). The
 `deepmerge-ts` fix is a major version, so it was checked against every Prisma command used
 here (generate, validate, format, migrate deploy and status, drift); Prisma 7.10.1 ships the
 same version, and moving to that Prisma release once it is two weeks old should replace the
@@ -257,3 +262,34 @@ Remaining risks:
 4. Device and session tables are cleaned only by expiry checks; no purge job removes old
    rows yet.
 5. Windows behaviour (credential manager, signals, file ACLs) is covered by unit tests only.
+
+## 12. Phase 4B: machine identities
+
+New attack surfaces: long lived service credentials in CI systems, the public token exchange,
+and grants that give automation access to environments.
+
+| Risk                                                     | Control                                                                                                                                                                                                                 | Test                                                                           |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Credential theft from the database                       | Only an HMAC-SHA256 digest under the integrity key is stored, bound to the lookup id; constant time verification; digest immutable                                                                                      | `machine-identities.int-spec.ts`, `access.test.ts` (database)                  |
+| Forging credentials with database write access           | The digest needs the integrity key, which is not in the database                                                                                                                                                        | design (`machine-tokens.ts`)                                                   |
+| Credential leaks in logs and output                      | Shown once; `no-store`; never retried automatically; never in audit metadata; the CLI has no credential argument and strips it from child processes; scanners know the `evv_sk_` and `evv_mt_` formats                  | `machine-identities.int-spec.ts`, `cli-machine.int-spec.ts`, `machine.test.ts` |
+| Long lived bearer credential reuse                       | Accepted only by the exchange; access tokens last 15 minutes and are checked again on every request; revocation, disabling and expiry stop the next request                                                             | `machine-identities.int-spec.ts`                                               |
+| Privilege escalation through machines                    | Machines hold only metadata and runtime permissions; grants need the granter's own permissions on that environment, `environment:protect` for protected ones and step up; no inheritance from creators or project roles | `machine-identities.int-spec.ts`, `access.test.ts` (shared)                    |
+| Cross tenant use                                         | Identity, credential, token and grant are tied by composite foreign keys to one workspace and project; environment ids from elsewhere answer 404                                                                        | `machine-identities.int-spec.ts`, `access.test.ts` (database)                  |
+| Machine tokens on people's routes and the reverse        | The global authentication guard separates them (`MACHINE_TOKEN_NOT_ALLOWED`, `MACHINE_TOKEN_REQUIRED`, `SERVICE_CREDENTIAL_NOT_ACCEPTED`)                                                                               | `machine-identities.int-spec.ts`                                               |
+| Guessing and flooding                                    | 95 bit lookup ids and 256 bit secrets; exchanges limited per credential and per address; runtime loads per identity and environment; refusals audited once per minute and reason                                        | `machine-identities.int-spec.ts`                                               |
+| Issuing a credential that reaches what the issuer cannot | Issuing and rotating need the issuer's own permissions on every environment the credential reaches (`GRANT_EXCEEDS_AUTHORITY`, audited as `service_credential.refused`); found in the Phase 4B review and fixed         | `machine-identities.int-spec.ts`                                               |
+| Concurrent rotation                                      | Unique `rotated_from_id`: a credential is replaced at most once                                                                                                                                                         | `machine-identities.int-spec.ts`                                               |
+
+Remaining risks:
+
+1. Access tokens are bearer tokens: one stolen from a running job works until it expires (at most
+   15 minutes) or is revoked. There is no request signing or token binding.
+2. A credential stolen from a CI secret store works until it is revoked or expires; EnvVault cannot
+   detect use from an unexpected place beyond the activity log.
+3. No OIDC workload identity federation yet, so CI systems must store a credential.
+4. Without `INTEGRITY_KEY_FILE` (development) credentials stop working at restart; removing an old
+   integrity key invalidates every credential it signed.
+5. Expired access token rows are not purged yet.
+6. Next.js was upgraded from 16.4.0 to 16.4.1 for the critical and high advisories of
+   2026-10-14 (see section 8).

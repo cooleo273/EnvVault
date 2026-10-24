@@ -19,7 +19,7 @@ import { uuidV7 } from '../common/uuid-v7.js';
 export const AUDIT_ID_CHUNK = 250;
 import { DatabaseService } from '../database/database.service.js';
 import { SecretEncryptionService } from '../encryption/secret-encryption.service.js';
-import type { SecretRequestContext } from './secret-authorization.service.js';
+import type { SecretRequestContext, VaultContext } from './secret-authorization.service.js';
 import { envelopeFromRow, versionRowFromEnvelope } from './secret-envelope.js';
 
 export const KEY_UNIQUE_INDEX = 'secrets_environment_key_live_key';
@@ -118,11 +118,7 @@ export class SecretVault {
     return createRepositories(this.database.client);
   }
 
-  context(
-    ctx: SecretRequestContext,
-    secretId: string,
-    secretVersionId: string,
-  ): SecretEncryptionContext {
+  context(ctx: VaultContext, secretId: string, secretVersionId: string): SecretEncryptionContext {
     const { workspaceId, projectId, environmentId } = ctx.environment.scope;
     // The AAD needs canonical lowercase ids; route params may arrive in upper case.
     return {
@@ -176,7 +172,7 @@ export class SecretVault {
    * and surfaces as a client safe error; the plaintext is never logged.
    */
   async open(
-    ctx: SecretRequestContext,
+    ctx: VaultContext,
     secretId: string,
     stored: StoredSecretVersion,
     metadata: AuditMetadata,
@@ -219,24 +215,31 @@ export class SecretVault {
 
   async audit(
     repos: Repositories,
-    ctx: SecretRequestContext,
+    ctx: VaultContext,
     action: string,
     resourceId: string | null,
     metadata: AuditMetadata,
     options: { outcome?: 'SUCCESS' | 'FAILURE' | 'DENIED'; resourceType?: string } = {},
   ): Promise<void> {
-    await repos.audit.append({
+    const event = {
       workspaceId: ctx.environment.scope.workspaceId,
       projectId: ctx.environment.scope.projectId,
       environmentId: ctx.environment.scope.environmentId,
-      actorUserId: ctx.principal.userId,
       action,
       outcome: options.outcome ?? 'SUCCESS',
       resourceType: options.resourceType ?? 'secret',
       resourceId,
       requestId: ctx.requestId,
       metadata,
-    });
+    };
+    if ('machine' in ctx) {
+      await repos.audit.appendService({
+        ...event,
+        actorServiceIdentityId: ctx.machine.serviceIdentityId,
+      });
+    } else {
+      await repos.audit.append({ ...event, actorUserId: ctx.principal.userId });
+    }
   }
 
   /**
@@ -248,7 +251,7 @@ export class SecretVault {
    */
   async auditBatch(
     repos: Repositories,
-    ctx: SecretRequestContext,
+    ctx: VaultContext,
     action: string,
     secretIds: readonly string[],
     metadata: AuditMetadata,
@@ -297,7 +300,7 @@ export class SecretVault {
    * be written the caller must not return the value, so this throws.
    */
   async auditRead(
-    ctx: SecretRequestContext,
+    ctx: VaultContext,
     action: string,
     resourceId: string | null,
     metadata: AuditMetadata,
@@ -323,7 +326,7 @@ export class SecretVault {
 
   /** FAILURE event with the error category only (never messages, values or key material). */
   async auditFailure(
-    ctx: SecretRequestContext,
+    ctx: VaultContext,
     action: string,
     resourceId: string | null,
     error: unknown,

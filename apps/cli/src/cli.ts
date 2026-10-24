@@ -2,6 +2,13 @@ import { Command, CommanderError, Option } from 'commander';
 import { authStatus, login, logout, whoami } from './commands/auth.js';
 import { doctor } from './commands/doctor.js';
 import {
+  authService,
+  machineDoctor,
+  machineEnvInfo,
+  machineEnvList,
+  machineWhoami,
+} from './commands/machine.js';
+import {
   envInfo,
   envList,
   envUse,
@@ -16,7 +23,8 @@ import { pull } from './commands/pull.js';
 import { run } from './commands/run.js';
 import { DEFAULT_API_URL } from './config.js';
 import { CLI_VERSION, type CliIo, Context, type GlobalOptions } from './context.js';
-import { EXIT, toCliError } from './errors.js';
+import { CliError, EXIT, toCliError } from './errors.js';
+import { type CredentialSource, personOnly } from './machine.js';
 
 export { CLI_VERSION, DEFAULT_API_URL, type CliIo };
 
@@ -46,6 +54,18 @@ function build(io: CliIo, done: (code: number) => void): Command {
       const ctx = new Context(io, command.optsWithGlobals<GlobalOptions>());
       done(await fn(ctx, command));
     };
+  /** Commands that act as a person; refused while a service credential is configured. */
+  const person =
+    (name: string, fn: Action): Action =>
+    (ctx, command) => {
+      if (ctx.machine) throw personOnly(name);
+      return fn(ctx, command);
+    };
+  /** One command, two implementations: as a person or as the configured machine identity. */
+  const either =
+    (forPerson: Action, forMachine: Action): Action =>
+    (ctx, command) =>
+      ctx.machine ? forMachine(ctx, command) : forPerson(ctx, command);
   const sub = (parent: Command, name: string, summary: string) =>
     parent
       .command(name)
@@ -56,16 +76,53 @@ function build(io: CliIo, done: (code: number) => void): Command {
   sub(program, 'login', 'Sign in through the web app')
     .option('--no-browser', 'Print the address instead of opening a browser')
     .action(
-      action((ctx, cmd) => login(ctx, { browser: cmd.opts<{ browser: boolean }>().browser })),
+      action(
+        person('login', (ctx, cmd) =>
+          login(ctx, { browser: cmd.opts<{ browser: boolean }>().browser }),
+        ),
+      ),
     );
   sub(program, 'logout', 'End this CLI session and forget its credentials').action(
-    action((ctx) => logout(ctx)),
+    action(person('logout', (ctx) => logout(ctx))),
   );
-  sub(program, 'whoami', 'Show who you are signed in as').action(action((ctx) => whoami(ctx)));
-  const auth = sub(program, 'auth', 'Inspect the CLI session');
+  sub(program, 'whoami', 'Show who (or which machine identity) you are').action(
+    action(
+      either(
+        (ctx) => whoami(ctx),
+        (ctx) => machineWhoami(ctx),
+      ),
+    ),
+  );
+  const auth = sub(program, 'auth', 'Inspect the CLI session or a service credential');
   sub(auth, 'status', 'Show the session, where credentials are kept and when they expire').action(
-    action((ctx) => authStatus(ctx)),
+    action(
+      either(
+        (ctx) => authStatus(ctx),
+        (ctx) => authService(ctx),
+      ),
+    ),
   );
+  sub(auth, 'service', 'Check a service credential (CI, servers) and show what it may do')
+    .option(
+      '--from-env',
+      'Read ENVVAULT_SERVICE_CREDENTIAL or ENVVAULT_SERVICE_CREDENTIAL_FILE (default)',
+    )
+    .option('--from-file <path>', 'Read the credential from a file only you can read')
+    .option('--from-stdin', 'Read the credential from standard input')
+    .action(
+      action((ctx, cmd) => {
+        const o = cmd.opts<{ fromEnv?: boolean; fromFile?: string; fromStdin?: boolean }>();
+        if ([o.fromEnv, o.fromFile, o.fromStdin].filter(Boolean).length > 1) {
+          throw new CliError('Choose one of --from-env, --from-file and --from-stdin.', EXIT.usage);
+        }
+        const source: CredentialSource | undefined = o.fromFile
+          ? { kind: 'file', path: o.fromFile }
+          : o.fromStdin
+            ? { kind: 'stdin' }
+            : undefined;
+        return authService(ctx, source);
+      }),
+    );
 
   sub(
     program,
@@ -76,33 +133,53 @@ function build(io: CliIo, done: (code: number) => void): Command {
     .option('--project <ref>', 'Project name, slug or id')
     .option('--env <ref>', 'Default environment name, slug or id')
     .option('--force', 'Replace an existing link without asking')
-    .action(action((ctx, cmd) => init(ctx, cmd.opts())));
+    .action(action(person('init', (ctx, cmd) => init(ctx, cmd.opts()))));
 
   const workspace = sub(program, 'workspace', 'Workspaces you belong to');
-  sub(workspace, 'list', 'List workspaces').action(action((ctx) => workspaceList(ctx)));
+  sub(workspace, 'list', 'List workspaces').action(
+    action(person('workspace list', (ctx) => workspaceList(ctx))),
+  );
   sub(workspace, 'use', 'Remember a workspace for use outside linked directories')
     .argument('<workspace>', 'Name, slug or id')
-    .action(action((ctx, cmd) => workspaceUse(ctx, cmd.args[0] ?? '')));
+    .action(action(person('workspace use', (ctx, cmd) => workspaceUse(ctx, cmd.args[0] ?? ''))));
 
   const project = sub(program, 'project', 'Projects in a workspace');
   sub(project, 'list', 'List projects')
     .option('--workspace <ref>', 'Workspace name, slug or id')
     .option('--all', 'Include archived projects')
-    .action(action((ctx, cmd) => projectList(ctx, cmd.opts())));
+    .action(action(person('project list', (ctx, cmd) => projectList(ctx, cmd.opts()))));
   sub(project, 'use', 'Link this directory to a project')
     .argument('<project>', 'Name, slug or id')
     .option('--workspace <ref>', 'Workspace name, slug or id')
-    .action(action((ctx, cmd) => projectUse(ctx, cmd.args[0] ?? '', cmd.opts())));
-  sub(project, 'info', 'Show the linked project').action(action((ctx) => projectInfo(ctx)));
+    .action(
+      action(person('project use', (ctx, cmd) => projectUse(ctx, cmd.args[0] ?? '', cmd.opts()))),
+    );
+  sub(project, 'info', 'Show the linked project').action(
+    action(person('project info', (ctx) => projectInfo(ctx))),
+  );
 
   const env = sub(program, 'env', 'Environments of the linked project');
-  sub(env, 'list', 'List environments').action(action((ctx) => envList(ctx)));
+  sub(env, 'list', 'List environments').action(
+    action(
+      either(
+        (ctx) => envList(ctx),
+        (ctx) => machineEnvList(ctx),
+      ),
+    ),
+  );
   sub(env, 'use', 'Set the default environment')
     .argument('<environment>', 'Name, slug or id')
-    .action(action((ctx, cmd) => envUse(ctx, cmd.args[0] ?? '')));
+    .action(action(person('env use', (ctx, cmd) => envUse(ctx, cmd.args[0] ?? ''))));
   sub(env, 'info', 'Show an environment and what you may do with it')
     .argument('[environment]', 'Name, slug or id (default: the linked default)')
-    .action(action((ctx, cmd) => envInfo(ctx, cmd.args[0])));
+    .action(
+      action(
+        either(
+          (ctx, cmd) => envInfo(ctx, cmd.args[0]),
+          (ctx, cmd) => machineEnvInfo(ctx, cmd.args[0]),
+        ),
+      ),
+    );
 
   sub(program, 'run', "Run a command with the environment's values in its environment")
     .usage('[options] -- <command> [args...]')
@@ -139,6 +216,13 @@ function build(io: CliIo, done: (code: number) => void): Command {
     .option('--no-gitignore', 'Do not add the file to .gitignore')
     .action(
       action((ctx, cmd) => {
+        if (ctx.machine) {
+          throw new CliError(
+            'Machine identities cannot write .env files.',
+            EXIT.forbidden,
+            'Use envvault run, which passes values to the process without a file.',
+          );
+        }
         const o = cmd.opts<{ env?: string; output: string; force?: boolean; gitignore: boolean }>();
         return pull(ctx, {
           ...(o.env ? { env: o.env } : {}),
@@ -150,7 +234,12 @@ function build(io: CliIo, done: (code: number) => void): Command {
     );
 
   sub(program, 'doctor', 'Check configuration, connectivity, sign in and access').action(
-    action((ctx) => doctor(ctx)),
+    action(
+      either(
+        (ctx) => doctor(ctx),
+        (ctx) => machineDoctor(ctx),
+      ),
+    ),
   );
 
   sub(program, 'health', 'Check that the EnvVault API is reachable').action(

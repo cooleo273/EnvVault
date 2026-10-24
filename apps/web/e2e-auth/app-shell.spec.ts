@@ -149,6 +149,22 @@ test.describe('app shell on mobile', () => {
     await expect(drawer).toBeHidden();
   });
 
+  test('works from the keyboard', async ({ page }) => {
+    await page.goto('/dashboard');
+    const trigger = page.getByRole('button', { name: 'Open navigation' });
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    const drawer = page.getByRole('dialog', { name: 'Navigation' });
+    await expect(drawer).toBeVisible();
+    // Focus moves into the drawer and stays there while it is open.
+    await expect(drawer.locator(':focus')).toHaveCount(1);
+    const settings = drawer.getByRole('link', { name: /Settings/ });
+    await settings.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/settings\/profile$/);
+    await expect(drawer).toBeHidden();
+  });
+
   test('closes the drawer with Escape', async ({ page }) => {
     await page.goto('/dashboard');
     await page.getByRole('button', { name: 'Open navigation' }).click();
@@ -164,4 +180,18 @@ test.describe('app shell on mobile', () => {
       expect(scrollWidth).toBeLessThanOrEqual(375);
     });
   }
+});
+
+test.describe('app shell on a touch screen', () => {
+  test.use({ viewport: { width: 375, height: 800 }, hasTouch: true, isMobile: true });
+
+  test('opens the drawer and navigates by tapping', async ({ page }) => {
+    await page.goto('/dashboard');
+    await page.getByRole('button', { name: 'Open navigation' }).tap();
+    const drawer = page.getByRole('dialog', { name: 'Navigation' });
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole('link', { name: /Settings/ }).tap();
+    await expect(page).toHaveURL(/\/settings\/profile$/);
+    await expect(drawer).toBeHidden();
+  });
 });

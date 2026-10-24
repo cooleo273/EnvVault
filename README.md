@@ -4,7 +4,7 @@ A centralized environment variable and secrets management platform for developer
 teams and enterprises: workspaces, projects, unlimited custom environments, and
 encrypted, versioned, audited secrets.
 
-> **Status: Phase 4A (developer CLI and secure local development).**
+> **Status: Phase 4B (machine identities, service credentials and CI/CD authentication).**
 > Authentication runs on **Neon Auth**. Workspaces, members and invitations (Phase 1), and
 > projects, custom environments and per environment access (Phase 2), are implemented.
 > Phase 3A added envelope encryption (AES-256-GCM, one data key per secret version); Phase 3B
@@ -12,7 +12,8 @@ encrypted, versioned, audited secrets.
 > export, history with rollback and bulk actions; Phase 3D adds environment comparison,
 > inheritance, validation and snapshots; Phase 3E adds key rotation tooling, encrypted keyring
 > backups, retention, shared rate limits, audit seals, idempotency and deployment configuration;
-> Phase 4A adds the `envvault` CLI with browser approved sign in and `envvault run`.
+> Phase 4A adds the `envvault` CLI with browser approved sign in and `envvault run`; Phase 4B adds
+> machine identities with service credentials for CI pipelines and servers.
 > **Do not store real secrets in EnvVault yet**: keys are self managed on the API host and the
 > remaining production blockers are listed in
 > [docs/security-hardening.md](docs/security-hardening.md#10-remaining-risks-and-production-blockers).
@@ -45,7 +46,11 @@ remaining risks; [docs/disaster-recovery.md](docs/disaster-recovery.md),
 deployment and operator procedures.
 [docs/cli.md](docs/cli.md) and [docs/cli-authentication.md](docs/cli-authentication.md) cover
 the `envvault` CLI: commands, `run` and `pull`, exit codes, platforms and the device sign in
-flow. The API's OpenAPI document is served
+flow. [docs/machine-identities.md](docs/machine-identities.md),
+[docs/service-credentials.md](docs/service-credentials.md) and
+[docs/ci-authentication.md](docs/ci-authentication.md) cover machine identities, credential
+issue, exchange, rotation and revocation, and CI examples. [docs/roadmap.md](docs/roadmap.md)
+lists completed and planned phases. The API's OpenAPI document is served
 at `GET /api/v1/openapi.json`. UI conventions are in
 [docs/design-system.md](docs/design-system.md); open `/design-system` in the running
 app for the component reference.
@@ -131,6 +136,15 @@ envvault doctor                  # what is missing, and how to fix it
 ```
 
 See [docs/cli.md](docs/cli.md) for every command, exit codes and platform notes.
+
+In CI, give the job a machine identity's credential instead of signing in:
+
+```bash
+export ENVVAULT_SERVICE_CREDENTIAL=…   # from the CI secret store
+envvault run --env qa -- npm run build
+```
+
+See [docs/ci-authentication.md](docs/ci-authentication.md).
 
 ## Scripts
 
@@ -242,6 +256,10 @@ git-ignored; only `*.env.example` templates with placeholder values are committe
   in the operating system credential store, and may call only a short list of read routes.
   Prefer `envvault run` over `envvault pull`: it never writes values to disk
   ([cli.md](docs/cli.md)).
+- Machine identities never inherit anyone's access: they hold only explicit environment grants,
+  limited to metadata and runtime loading, and their credentials are stored as keyed digests,
+  shown once and exchanged for 15 minute tokens
+  ([machine-identities.md](docs/machine-identities.md)).
 - The local Docker setup is for development only.
 
 ## Contributing

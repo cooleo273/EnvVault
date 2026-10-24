@@ -35,6 +35,8 @@ model User {
   secretVersionsCreated     SecretVersion[]               @relation("SecretVersionCreatedByUser")
   rotationPoliciesCreated   SecretRotationPolicy[]        @relation("RotationPolicyCreatedBy")
   serviceIdentitiesCreated  ServiceIdentity[]             @relation("ServiceIdentityCreatedBy")
+  serviceIdentitiesDisabled ServiceIdentity[]             @relation("ServiceIdentityDisabledBy")
+  serviceIdentitiesRetired  ServiceIdentity[]             @relation("ServiceIdentityRetiredBy")
   serviceCredentialsCreated ServiceCredential[]           @relation("ServiceCredentialCreatedBy")
   serviceCredentialsRevoked ServiceCredential[]           @relation("ServiceCredentialRevokedBy")
   accessPoliciesCreated     AccessPolicy[]                @relation("AccessPolicyCreatedBy")

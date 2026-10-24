@@ -226,3 +226,32 @@ values of an environment into a child process (`POST …/environments/:id/runtim
 The permission key is `secret:runtime` rather than `secret:runtime:read` because catalog keys
 have exactly one `resource:action` separator (database check constraint). Existing
 workspaces need `pnpm db:sync-catalog` for the role changes.
+
+## 10. Phase 4B: machine identities
+
+No new permission keys: `service_identity:read` and `service_identity:manage` existed in the
+catalog and are now project scoped and in use. Role changes (run `pnpm db:sync-catalog`):
+
+| Role                                                            | Change                                                                                                                                       |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace Owner, Admin                                          | Gain `service_identity:read` and `service_identity:manage` (administration only: they still cannot grant data plane access they do not hold) |
+| Project Admin                                                   | Gains `service_identity:manage` (already had `service_identity:read`)                                                                        |
+| New environment role **Runtime loader** (`environment-runtime`) | `environment:read`, `secret:list`, `secret:runtime`                                                                                          |
+| New environment role **Variable lister** (`environment-lister`) | `environment:read`, `secret:list`                                                                                                            |
+
+Machine identities are evaluated by `evaluateMachinePermissions`
+(`packages/shared/src/domain/access.ts`), not by the project and environment evaluator:
+
+- only ALLOW grants on the environment, minus DENY grants, count; nothing comes from project
+  roles, workspace roles or the identity's creator;
+- the result is confined to `MACHINE_PERMISSIONS` (`environment:read`, `secret:list`,
+  `secret:runtime`) and to the access token's scopes;
+- only roles made entirely of machine permissions can be granted to a machine
+  (`ROLE_NOT_MACHINE_GRANTABLE`);
+- an ALLOW grant (and lifting a DENY) needs `access_policy:manage` on the environment,
+  `environment:protect` if it is protected, every permission of the role there yourself
+  (`GRANT_EXCEEDS_AUTHORITY`) and a recent step up;
+- the database ties each grant to the identity's own project.
+
+Machine tokens are accepted only on `@MachineRoute()` routes and people's tokens are refused
+there; see [machine-identities.md](machine-identities.md).

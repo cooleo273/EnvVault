@@ -294,3 +294,74 @@ describe('retries and failures', () => {
     await expect(meta(2).checkCompatibility()).rejects.toBeInstanceOf(EnvVaultIncompatibleApiError);
   });
 });
+
+describe('machine identities', () => {
+  const credential = `evv_sk_${'A'.repeat(16)}_${'b'.repeat(43)}`;
+  const accessToken = `evv_mt_${'c'.repeat(43)}`;
+  const issued = {
+    accessToken,
+    tokenType: 'Bearer',
+    expiresIn: 900,
+    expiresAt: '2026-01-01T00:15:00.000Z',
+    scopes: ['secret:runtime'],
+    environmentIds: [],
+    identity: {
+      id: '0b6f1f54-8a52-4a43-9a4a-1c7a7d4f0c01',
+      name: 'ci',
+      workspaceId: '0b6f1f54-8a52-4a43-9a4a-1c7a7d4f0c02',
+      projectId: '0b6f1f54-8a52-4a43-9a4a-1c7a7d4f0c03',
+    },
+    credential: {
+      id: '0b6f1f54-8a52-4a43-9a4a-1c7a7d4f0c04',
+      name: 'ci',
+      expiresAt: '2026-02-01T00:00:00.000Z',
+    },
+  };
+
+  it('sends the service credential only to the token exchange, never through getAccessToken', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, issued));
+    const getAccessToken = vi.fn(() => Promise.resolve('unused'));
+    const client = createEnvVaultClient({
+      baseUrl: 'http://localhost:4000',
+      fetch: fetchMock,
+      getAccessToken,
+    });
+    await expect(client.exchangeServiceCredential(credential)).resolves.toMatchObject({
+      accessToken,
+    });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe('http://localhost:4000/api/v1/machine/token');
+    expect((init?.headers as Record<string, string>).authorization).toBe(`Bearer ${credential}`);
+    expect(init?.body as string).not.toContain(credential);
+    expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('does not retry machine runtime loads or exchanges', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed'));
+    const client = createEnvVaultClient({
+      baseUrl: 'http://localhost:4000',
+      fetch: fetchMock,
+      retries: 3,
+      getAccessToken: () => Promise.resolve(accessToken),
+    });
+    await expect(
+      client.machineRuntime('0b6f1f54-8a52-4a43-9a4a-1c7a7d4f0c05'),
+    ).rejects.toBeInstanceOf(EnvVaultNetworkError);
+    await expect(client.exchangeServiceCredential(credential)).rejects.toBeInstanceOf(
+      EnvVaultNetworkError,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a response that does not look like a machine token', async () => {
+    const client = createEnvVaultClient({
+      baseUrl: 'http://localhost:4000',
+      fetch: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(jsonResponse(200, { ...issued, accessToken: 'not-a-token' })),
+    });
+    await expect(client.exchangeServiceCredential(credential)).rejects.toBeInstanceOf(
+      EnvVaultResponseValidationError,
+    );
+  });
+});

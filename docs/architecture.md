@@ -359,7 +359,13 @@ See [authentication.md](authentication.md) for the full design.
   `secret.runtime_loaded` with ids only. See [cli.md](cli.md).
 - `GET /api/v1/meta` publishes the API protocol version; the SDK's `checkCompatibility()`
   lets clients refuse an incompatible API before sending credentials.
-- CI/CD machine identities (service tokens) are a later phase.
+- Machine identities (Phase 4B) are a principal of their own (`MachinePrincipal`, never a
+  `Principal`): they authenticate with a service credential (`evv_sk_`, HMAC-SHA256 digest under
+  the integrity key) at `POST /machine/token`, which issues a 15 minute access token (`evv_mt_`).
+  Routes marked `@MachineRoute()` accept only those tokens and authorize in their service against
+  the identity's grants (`access_policies`), confined to `environment:read`, `secret:list` and
+  `secret:runtime` and to the token's scopes; every other route refuses them. See
+  [machine-identities.md](machine-identities.md) and [service-credentials.md](service-credentials.md).
 
 ## 9. Testing strategy
 
@@ -418,7 +424,8 @@ developer's real database.
   readiness checks, and snapshots with drift and restore. Phase 3E adds key rotation tooling,
   keyring backups, retention, shared rate limits, audit seals, idempotency and deployment
   configuration; see [security-hardening.md](security-hardening.md) for what remains. Phase
-  4A adds the developer CLI with device sign in, runtime loading and `.env` export.
+  4A adds the developer CLI with device sign in, runtime loading and `.env` export. Phase 4B adds
+  machine identities, service credentials and the CLI's machine mode for CI.
 - Readiness is evaluated on request; snapshots are manual (no schedules or retention).
 - Protected-environment approvals are modelled (`required_approvals`, change request
   tables) but not enforced; no approval workflow runs yet.
@@ -440,8 +447,17 @@ developer's real database.
   CSP (`upgrade-insecure-requests`) makes the browser upgrade a prefetch to https, which
   fails with `ERR_SSL_PROTOCOL_ERROR` on that server (always in CI, sometimes locally). The
   landing page test ignores that one console error; it cannot occur over https.
+- The full stack Playwright suite runs on `next dev` (production builds refuse plain http auth
+  URLs). Two development only effects are handled there: routes compile on first request, so a
+  warm up project requests the first routes before any timed assertion; and the dev tools badge
+  is moved to the bottom right for that server only, because its expanded form (any dev notice,
+  for example the Next.js 16.4.0 vulnerability notice) covered the mobile drawer's Settings link.
+  The public suite checks that production builds have no such overlay.
 - The deployment configuration in `infrastructure/deployment` has not been built or run.
 - Web CSP allows inline scripts until a nonce based CSP is introduced.
 - The CLI is tested on macOS and Linux; Windows is covered by unit tests only. It is not
   published to a registry. Values loaded by `envvault run` are readable by the child, by
   the same operating system user and by administrators ([cli.md](cli.md#envvault-run)).
+- Machine identities have no OIDC workload identity federation yet, no request signing (access
+  tokens are bearer tokens, limited to 15 minutes) and cannot write values. Service credentials
+  depend on `INTEGRITY_KEY_FILE`; without it they stop working when the API restarts.

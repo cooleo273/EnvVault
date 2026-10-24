@@ -97,7 +97,7 @@ describe('access control constraints', () => {
       'access_policies_one_subject_chk',
     );
     const identity = await db.serviceIdentity.create({
-      data: { workspaceId: t.workspaceId, name: 'ci' },
+      data: { workspaceId: t.workspaceId, projectId: t.projectId, name: 'ci' },
     });
     await expectViolation(
       db.accessPolicy.create({
@@ -166,9 +166,11 @@ describe('access control constraints', () => {
       serviceIdentityId: identityId,
       type: 'API_TOKEN' as const,
       name: 'deploy token',
-      tokenPrefix: `evt_${randomBytes(6).toString('hex')}`,
+      tokenPrefix: randomBytes(8).toString('hex'),
       secretHash: tokenHash(),
-      hashAlgorithm: 'sha256',
+      hashAlgorithm: 'hmac-sha256',
+      digestKeyId: 'ik-0123456789abcdef',
+      scopes: ['environment:read', 'secret:runtime'],
       expiresAt: new Date(Date.now() + 30 * DAY),
       ...overrides,
     });
@@ -244,6 +246,105 @@ describe('access control constraints', () => {
           data: { secretHash: tokenHash() },
         }),
         /secret_hash is immutable/,
+      );
+    });
+
+    it('confines scopes to machine permissions and requires a keyed digest', async () => {
+      await expectViolation(
+        db.serviceCredential.create({ data: apiToken({ scopes: ['secret:read'] }) }),
+        'check',
+        'service_credentials_scopes_chk',
+      );
+      await expectViolation(
+        db.serviceCredential.create({ data: apiToken({ scopes: [] }) }),
+        'check',
+        'service_credentials_scopes_chk',
+      );
+      await expectViolation(
+        db.serviceCredential.create({ data: apiToken({ hashAlgorithm: 'sha256' }) }),
+        'check',
+        'service_credentials_digest_chk',
+      );
+      await expectViolation(
+        db.serviceCredential.create({ data: apiToken({ digestKeyId: null }) }),
+        'check',
+        'service_credentials_digest_chk',
+      );
+    });
+
+    it('rotates a credential at most once and keeps scopes immutable', async () => {
+      const first = await db.serviceCredential.create({ data: apiToken() });
+      await db.serviceCredential.create({ data: apiToken({ rotatedFromId: first.id }) });
+      await expectViolation(
+        db.serviceCredential.create({ data: apiToken({ rotatedFromId: first.id }) }),
+        'unique',
+      );
+      await expectTriggerRejection(
+        db.serviceCredential.update({
+          where: { id: first.id },
+          data: { scopes: ['environment:read', 'secret:list', 'secret:runtime'] },
+        }),
+        /scopes is immutable/,
+      );
+    });
+
+    it('stores access tokens as 32 byte hashes bound to their credential', async () => {
+      const credential = await db.serviceCredential.create({ data: apiToken() });
+      const token = {
+        workspaceId: t.workspaceId,
+        serviceIdentityId: identityId,
+        credentialId: credential.id,
+        tokenHash: tokenHash(),
+        scopes: ['secret:runtime'],
+        expiresAt: new Date(Date.now() + 60_000),
+      };
+      await expect(db.machineAccessToken.create({ data: token })).resolves.toBeDefined();
+      await expectViolation(
+        db.machineAccessToken.create({ data: { ...token, tokenHash: new Uint8Array(8) } }),
+        'check',
+        'machine_access_tokens_hash_chk',
+      );
+      await expectViolation(
+        db.machineAccessToken.create({
+          data: { ...token, tokenHash: tokenHash(), scopes: ['secret:export'] },
+        }),
+        'check',
+        'machine_access_tokens_scopes_chk',
+      );
+      const other = await db.serviceIdentity.create({
+        data: { workspaceId: t.workspaceId, projectId: t.projectId, name: 'other' },
+      });
+      await expectViolation(
+        db.machineAccessToken.create({
+          data: { ...token, tokenHash: tokenHash(), serviceIdentityId: other.id },
+        }),
+        'foreign_key',
+        'machine_access_tokens_credential_fkey',
+      );
+    });
+
+    it('grants an identity only environments of its own project', async () => {
+      const second = await db.project.create({
+        data: { workspaceId: t.workspaceId, name: 'Second', slug: 'second' },
+      });
+      const environment = await db.environment.create({
+        data: { workspaceId: t.workspaceId, projectId: second.id, name: 'QA', slug: 'qa' },
+      });
+      const role = await db.role.findFirstOrThrow({
+        where: { workspaceId: t.workspaceId, key: 'environment-viewer' },
+      });
+      await expectViolation(
+        db.accessPolicy.create({
+          data: {
+            workspaceId: t.workspaceId,
+            projectId: second.id,
+            environmentId: environment.id,
+            serviceIdentityId: identityId,
+            roleId: role.id,
+          },
+        }),
+        'foreign_key',
+        'access_policies_service_identity_fkey',
       );
     });
 

@@ -188,6 +188,11 @@ export const envSchema = z
     /** Runtime loads (envvault run) by one user, per minute, and per environment. */
     SECRET_RUNTIME_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(30),
     SECRET_RUNTIME_RESOURCE_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(20),
+    // Machine identities (docs/service-credentials.md): token exchanges per
+    // credential, and runtime loads per identity overall and per environment.
+    MACHINE_TOKEN_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(30),
+    MACHINE_RUNTIME_RATE_LIMIT: z.coerce.number().int().min(1).max(5000).default(120),
+    MACHINE_RUNTIME_RESOURCE_RATE_LIMIT: z.coerce.number().int().min(1).max(5000).default(60),
     /** Total key and value bytes one runtime response may carry. */
     RUNTIME_MAX_BYTES: z.coerce
       .number()
@@ -283,7 +288,7 @@ export const envSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['INTEGRITY_KEY_FILE'],
-        message: 'is required in production (audit seals and idempotency)',
+        message: 'is required in production (audit seals, idempotency and service credentials)',
       });
     }
     if (env.APP_BASE_URL !== undefined && !env.APP_BASE_URL.startsWith('https://')) {

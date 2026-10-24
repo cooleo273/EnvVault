@@ -10,6 +10,7 @@ import {
   type UserConfig,
 } from './config.js';
 import { credentialStore, type CredentialStore } from './credentials.js';
+import { machineMode } from './machine.js';
 import { configDir } from './paths.js';
 
 export const CLI_VERSION = '0.1.0';
@@ -36,6 +37,8 @@ export interface CliIo {
   openBrowser?: (url: string) => Promise<void>;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
+  /** Reads all of standard input (for --from-stdin); absent when stdin is a terminal. */
+  readStdin?: () => Promise<string>;
 }
 
 export interface GlobalOptions {
@@ -60,6 +63,11 @@ export class Context {
 
   get json(): boolean {
     return this.options.json === true;
+  }
+
+  /** A service credential in the environment makes every command act as that machine identity. */
+  get machine(): boolean {
+    return machineMode(this.io.env);
   }
 
   get paint() {

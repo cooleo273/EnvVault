@@ -51,6 +51,12 @@ export function buildOpenApiDocument(version: string): JsonSchema {
     const notes = [
       route.permission ? `Requires \`${route.permission}\`.` : null,
       route.stepUp ? 'Requires a recent password step-up (`POST /auth/step-up`).' : null,
+      route.machine === 'credential'
+        ? 'Authenticate with a service credential: `Authorization: Bearer evv_sk_…`.'
+        : null,
+      route.machine === 'token'
+        ? 'Machine identities only: `Authorization: Bearer evv_mt_…` from `POST /machine/token`.'
+        : null,
     ].filter(Boolean);
     const operation: JsonSchema = {
       summary: route.summary,
@@ -87,7 +93,7 @@ export function buildOpenApiDocument(version: string): JsonSchema {
       title: 'EnvVault API',
       version,
       description:
-        'Versioned REST API. Authenticate with a Neon Auth access token: `Authorization: Bearer <JWT>`. Authorization is default-deny; resources outside the caller’s access return 404.',
+        'Versioned REST API. People authenticate with a Neon Auth access token (`Authorization: Bearer <JWT>`); machine identities exchange a service credential at `POST /machine/token` and call the `/machine` routes. Authorization denies by default; resources outside the caller’s access return 404.',
     },
     servers: [{ url: API_BASE_PATH }],
     components: {

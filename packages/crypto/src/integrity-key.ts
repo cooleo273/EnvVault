@@ -17,7 +17,8 @@ const FORMAT_VERSION = 1;
 const KEY_ID_PATTERN = /^ik-[0-9a-f]{16}$/;
 export const MAC_BYTES = 32;
 
-export type IntegrityPurpose = 'audit-seal' | 'idempotency';
+export const INTEGRITY_PURPOSES = ['audit-seal', 'idempotency', 'service-credential'] as const;
+export type IntegrityPurpose = (typeof INTEGRITY_PURPOSES)[number];
 
 interface IntegrityKeyEntry {
   keyId: string;
@@ -135,7 +136,7 @@ export class IntegrityKeys {
     for (const entry of parsed.keys) {
       const material = decodeKeyMaterial(entry.key);
       try {
-        for (const purpose of ['audit-seal', 'idempotency'] as const) {
+        for (const purpose of INTEGRITY_PURPOSES) {
           const subkey = Buffer.from(
             hkdfSync(
               'sha256',

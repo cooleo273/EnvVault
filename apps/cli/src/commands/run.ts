@@ -5,7 +5,10 @@ import { requireProjectConfig } from '../config.js';
 import type { Context } from '../context.js';
 import { CliError, EXIT, toCliError } from '../errors.js';
 import { signedIn } from '../session.js';
+import type { RuntimeConfiguration } from '@envvault/shared';
+import { withoutCredential } from '../machine.js';
 import { resolveEnvironment } from './link.js';
+import { machineRuntimeValues } from './machine.js';
 
 export type Spawner = (command: string, args: string[], options: SpawnOptions) => ChildProcess;
 
@@ -44,44 +47,30 @@ export async function run(
       'Give a command to run after --, for example: envvault run -- npm run dev',
       EXIT.usage,
     );
-  const session = await signedIn(ctx);
-  const { config } = await requireProjectConfig(ctx.io.cwd);
-  const environments = (
-    await session.api.listEnvironments(config.workspaceId, config.projectId, { pageSize: 200 })
-  ).items;
-  const environment = resolveEnvironment(environments, options.env, config.environmentId);
-
-  let values: Map<string, string>;
-  try {
-    const loaded = await session.api.runtimeConfiguration(
-      config.workspaceId,
-      config.projectId,
-      environment.id,
-      {
-        includeInherited: options.inherited,
-      },
-    );
-    if (loaded.missingRequired.length > 0 && !options.allowMissing) {
-      throw new CliError(
-        `Required variables have no value in ${environment.name}: ${loaded.missingRequired.join(', ')}`,
-        EXIT.missingSecrets,
-        'Set them in EnvVault, or pass --allow-missing to run anyway.',
-      );
-    }
-    if (loaded.withheldInherited > 0 && !options.quiet) {
-      ctx.note(
-        `${String(loaded.withheldInherited)} inherited variables were left out: you may not load the base environment.`,
-      );
-    }
-    values = new Map(loaded.values.map((v) => [v.key, v.value]));
-  } catch (error) {
-    throw toCliError(
-      error,
-      session.credential.webUrl ? { confirmUrl: `${session.credential.webUrl}/cli/confirm` } : {},
+  const { environment, loaded } = ctx.machine
+    ? await machineRuntimeValues(ctx, options)
+    : await personRuntimeValues(ctx, options);
+  if (loaded.missingRequired.length > 0 && !options.allowMissing) {
+    throw new CliError(
+      `Required variables have no value in ${environment.name}: ${loaded.missingRequired.join(', ')}`,
+      EXIT.missingSecrets,
+      'Set them in EnvVault, or pass --allow-missing to run anyway.',
     );
   }
+  if (loaded.withheldInherited > 0 && !options.quiet) {
+    ctx.note(
+      `${String(loaded.withheldInherited)} inherited variables were left out: the base environment may not be loaded.`,
+    );
+  }
+  const values = new Map(loaded.values.map((v) => [v.key, v.value]));
+  loaded.values.length = 0;
 
-  const { env: childEnv, kept } = childEnvironment(process.env, values, options.override);
+  // The child never sees the service credential, only the values it was granted.
+  const { env: childEnv, kept } = childEnvironment(
+    withoutCredential(process.env),
+    values,
+    options.override,
+  );
   const count = values.size;
   // Drop our references as soon as the child has its copy; JavaScript cannot wipe strings.
   values.clear();
@@ -91,6 +80,32 @@ export async function run(
     );
   }
   return launch(file, args, childEnv, ctx.io.cwd, spawner);
+}
+
+async function personRuntimeValues(
+  ctx: Context,
+  options: RunOptions,
+): Promise<{ environment: { name: string }; loaded: RuntimeConfiguration }> {
+  const session = await signedIn(ctx);
+  const { config } = await requireProjectConfig(ctx.io.cwd);
+  const environments = (
+    await session.api.listEnvironments(config.workspaceId, config.projectId, { pageSize: 200 })
+  ).items;
+  const environment = resolveEnvironment(environments, options.env, config.environmentId);
+  try {
+    const loaded = await session.api.runtimeConfiguration(
+      config.workspaceId,
+      config.projectId,
+      environment.id,
+      { includeInherited: options.inherited },
+    );
+    return { environment, loaded };
+  } catch (error) {
+    throw toCliError(
+      error,
+      session.credential.webUrl ? { confirmUrl: `${session.credential.webUrl}/cli/confirm` } : {},
+    );
+  }
 }
 
 /** The parent environment plus the loaded values; with `override` off, variables already set win. */

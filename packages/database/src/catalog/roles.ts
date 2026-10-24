@@ -42,6 +42,8 @@ const PROJECT_ADMINISTRATION: PermissionKey[] = [
   'environment:delete',
   'environment:protect',
   'access_policy:manage',
+  'service_identity:read',
+  'service_identity:manage',
 ];
 
 const PROJECT_READ: PermissionKey[] = [
@@ -121,6 +123,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       'secret:export',
       'secret:runtime',
       'service_identity:read',
+      'service_identity:manage',
       'change_request:create',
       'change_request:review',
       'change_request:apply',
@@ -176,6 +179,21 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
     description: 'Deploys this environment with machine credentials (future phase).',
     scope: 'ENVIRONMENT',
     permissions: ['environment:read', 'secret:list', 'environment:deploy'],
+  },
+  {
+    key: 'environment-lister',
+    name: 'Variable lister',
+    description: 'Sees this environment’s metadata and variable names, never values.',
+    scope: 'ENVIRONMENT',
+    permissions: ['environment:read', 'secret:list'],
+  },
+  {
+    key: 'environment-runtime',
+    name: 'Runtime loader',
+    description:
+      'Loads values into a running process (envvault run, machine identities) without revealing or exporting them.',
+    scope: 'ENVIRONMENT',
+    permissions: ['environment:read', 'secret:list', 'secret:runtime'],
   },
   {
     key: 'environment-reader',

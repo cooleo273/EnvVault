@@ -223,12 +223,12 @@ export async function seedDevelopmentData(client: PrismaClient): Promise<SeedRes
           data: { workspaceId, projectId, ...SEED.serviceIdentity, createdById: alice },
         }));
 
-      // Environment-scoped grants: CI reads staging; Carol approves production.
+      // Environment grants: CI loads staging at runtime; Carol approves production.
       const grants = [
         {
           environmentId: required(environmentIds.staging, 'staging environment'),
           serviceIdentityId: identity.id,
-          roleId: roleId('environment-reader'),
+          roleId: roleId('environment-runtime'),
         },
         {
           environmentId: required(environmentIds.production, 'production environment'),

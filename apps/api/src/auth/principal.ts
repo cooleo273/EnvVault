@@ -22,6 +22,27 @@ export interface Principal {
   cliSessionId?: string;
 }
 
+/**
+ * A machine identity authenticated by a machine access token. Deliberately
+ * not a {@link Principal}: it has no user row, no membership and no step up,
+ * and only routes marked @MachineRoute() accept it.
+ */
+export interface MachinePrincipal {
+  serviceIdentityId: string;
+  identityName: string;
+  workspaceId: string;
+  projectId: string;
+  credentialId: string;
+  credentialName: string;
+  credentialExpiresAt: Date;
+  tokenId: string;
+  tokenExpiresAt: Date;
+  /** Token scopes; effective permissions are these intersected with grants. */
+  scopes: ReadonlySet<string>;
+  /** Environments the token is restricted to; empty means every granted one. */
+  environmentIds: readonly string[];
+}
+
 /** Result of workspace authorization: proof of access plus the caller's role. */
 export interface AuthorizedWorkspace {
   scope: WorkspaceScope;
@@ -50,6 +71,7 @@ export interface AuthorizedEnvironment {
 export type AuthenticatedRequest = Request & {
   id?: unknown;
   principal?: Principal;
+  machine?: MachinePrincipal;
   workspace?: AuthorizedWorkspace;
   project?: AuthorizedProject;
   environment?: AuthorizedEnvironment;

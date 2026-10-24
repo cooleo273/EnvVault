@@ -441,3 +441,154 @@ describe(`migrations ${INTELLIGENCE} and ${HARDENING}`, { timeout: 120_000 }, ()
     deploy(ALL);
   });
 });
+
+const MACHINE = '20261026090000_machine_identities';
+const ROLLBACK = join(PACKAGE_DIR, 'prisma', 'rollbacks', `${MACHINE}.down.sql`);
+
+const M = {
+  role: '0190a000-0000-7000-8000-0000000004a1',
+  identity: '0190a000-0000-7000-8000-0000000004a2',
+  disabled: '0190a000-0000-7000-8000-0000000004a3',
+  legacyToken: '0190a000-0000-7000-8000-0000000004a4',
+  oidc: '0190a000-0000-7000-8000-0000000004a5',
+  grant: '0190a000-0000-7000-8000-0000000004a6',
+  otherProject: '0190a000-0000-7000-8000-0000000004a7',
+  otherEnvironment: '0190a000-0000-7000-8000-0000000004a8',
+};
+
+/** What a shared database may hold from Phase 1 placeholders: identities, a grant, credentials. */
+async function loadPlaceholderIdentities(db: PrismaClient): Promise<void> {
+  const statements = [
+    `INSERT INTO users (id, email, auth_user_id, updated_at) VALUES ('${IDS.user}', 'legacy@example.test', 'test:legacy', now())`,
+    `INSERT INTO workspaces (id, name, slug, updated_at) VALUES ('${IDS.workspace}', 'Legacy', 'legacy', now())`,
+    `INSERT INTO projects (id, workspace_id, name, slug, updated_at, color, icon) VALUES ('${IDS.project}', '${IDS.workspace}', 'P', 'p', now(), 'slate', 'folder'), ('${M.otherProject}', '${IDS.workspace}', 'Q', 'q', now(), 'slate', 'folder')`,
+    `INSERT INTO environments (id, workspace_id, project_id, name, slug, kind, sort_order, updated_at, color) VALUES ('${IDS.environment}', '${IDS.workspace}', '${IDS.project}', 'Dev', 'dev', 'DEVELOPMENT', 0, now(), 'slate'), ('${M.otherEnvironment}', '${IDS.workspace}', '${M.otherProject}', 'Dev', 'dev', 'DEVELOPMENT', 0, now(), 'slate')`,
+    `INSERT INTO roles (id, workspace_id, key, name, scope, is_system, updated_at) VALUES ('${M.role}', '${IDS.workspace}', 'environment-reader', 'Secret reader', 'ENVIRONMENT', true, now())`,
+    `INSERT INTO service_identities (id, workspace_id, project_id, name, created_by_id, updated_at) VALUES ('${M.identity}', '${IDS.workspace}', '${IDS.project}', 'ci-deployer', '${IDS.user}', now())`,
+    `INSERT INTO service_identities (id, workspace_id, project_id, name, status, updated_at) VALUES ('${M.disabled}', '${IDS.workspace}', '${IDS.project}', 'old-bot', 'DISABLED', now())`,
+    `INSERT INTO access_policies (id, workspace_id, project_id, environment_id, service_identity_id, role_id, updated_at) VALUES ('${M.grant}', '${IDS.workspace}', '${IDS.project}', '${IDS.environment}', '${M.identity}', '${M.role}', now())`,
+    `INSERT INTO service_credentials (id, workspace_id, service_identity_id, type, name, token_prefix, secret_hash, hash_algorithm, expires_at, updated_at)
+     VALUES ('${M.legacyToken}', '${IDS.workspace}', '${M.identity}', 'API_TOKEN', 'legacy', 'evt_legacy', decode('${'ab'.repeat(32)}', 'hex'), 'sha256', now() + interval '30 days', now())`,
+    `INSERT INTO service_credentials (id, workspace_id, service_identity_id, type, name, oidc_issuer, oidc_subject, updated_at)
+     VALUES ('${M.oidc}', '${IDS.workspace}', '${M.identity}', 'OIDC_FEDERATION', 'gha', 'https://token.actions.githubusercontent.com', 'repo:acme/app:ref:refs/heads/main', now())`,
+  ];
+  for (const sql of statements) await db.$executeRawUnsafe(sql);
+}
+
+describe(`migration ${MACHINE}`, { timeout: 180_000 }, () => {
+  const before = ALL.slice(0, ALL.indexOf(MACHINE));
+  let db: PrismaClient | undefined;
+
+  afterAll(async () => {
+    await db?.$disconnect();
+    const admin = createPrismaClient({ connectionString: baseUrl });
+    await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
+    await admin.$disconnect();
+  });
+
+  async function fresh(): Promise<PrismaClient> {
+    await db?.$disconnect();
+    await recreateDatabase();
+    deploy(before);
+    db = createPrismaClient({ connectionString: url });
+    await loadPlaceholderIdentities(db);
+    return db;
+  }
+
+  it('keeps placeholder identities and grants, and revokes tokens it cannot verify', async () => {
+    const client = await fresh();
+    const columns = await columnsOf(client);
+    const identitiesBefore = await client.$queryRawUnsafe(
+      `SELECT ${(columns.service_identities ?? []).map((c) => `"${c}"`).join(', ')} FROM service_identities ORDER BY id`,
+    );
+    const grantsBefore = await client.$queryRawUnsafe(`SELECT * FROM access_policies ORDER BY id`);
+
+    deploy([...before, MACHINE]);
+
+    expect(
+      await client.$queryRawUnsafe(
+        `SELECT ${(columns.service_identities ?? []).map((c) => `"${c}"`).join(', ')} FROM service_identities ORDER BY id`,
+      ),
+    ).toEqual(identitiesBefore);
+    expect(await client.$queryRawUnsafe(`SELECT * FROM access_policies ORDER BY id`)).toEqual(
+      grantsBefore,
+    );
+    const disabled = await client.$queryRawUnsafe<{ disabled_at: Date | null }[]>(
+      `SELECT disabled_at FROM service_identities WHERE id = '${M.disabled}'`,
+    );
+    expect(disabled[0]?.disabled_at).not.toBeNull();
+    const credentials = await client.$queryRawUnsafe<
+      {
+        id: string;
+        revoked_at: Date | null;
+        revocation_reason: string | null;
+        secret_hash: Buffer | null;
+        scopes: string[];
+      }[]
+    >(
+      `SELECT id, revoked_at, revocation_reason, secret_hash, scopes FROM service_credentials ORDER BY id`,
+    );
+    const legacy = credentials.find((c) => c.id === M.legacyToken);
+    expect(legacy?.revoked_at).not.toBeNull();
+    expect(legacy?.revocation_reason).toBe('Superseded by the Phase 4B credential format');
+    expect(Buffer.from(legacy?.secret_hash ?? []).toString('hex')).toBe('ab'.repeat(32));
+    expect(credentials.find((c) => c.id === M.oidc)?.revoked_at).toBeNull();
+    // A legacy token cannot be made usable again without a keyed digest.
+    await expect(
+      client.$executeRawUnsafe(
+        `UPDATE service_credentials SET revoked_at = NULL, revocation_reason = NULL WHERE id = '${M.legacyToken}'`,
+      ),
+    ).rejects.toThrow(/service_credentials_digest_chk/);
+    const neonAuth = await client.$queryRawUnsafe<{ n: bigint }[]>(
+      `SELECT count(*) AS n FROM information_schema.tables WHERE table_schema = 'neon_auth'`,
+    );
+    expect(Number(neonAuth[0]?.n)).toBe(0);
+  });
+
+  it('stops without changing anything when an identity has no project', async () => {
+    const client = await fresh();
+    await client.$executeRawUnsafe(
+      `INSERT INTO service_identities (id, workspace_id, name, updated_at) VALUES ('0190a000-0000-7000-8000-0000000004b1', '${IDS.workspace}', 'orphan', now())`,
+    );
+    const schema = await columnsOf(client);
+    expect(() => {
+      deploy([...before, MACHINE]);
+    }).toThrow();
+    expect(await columnsOf(client)).toEqual(schema);
+  });
+
+  it('refuses a grant to another project instead of carrying it over', async () => {
+    const client = await fresh();
+    await client.$executeRawUnsafe(
+      `INSERT INTO access_policies (id, workspace_id, project_id, environment_id, service_identity_id, role_id, updated_at) VALUES ('0190a000-0000-7000-8000-0000000004c1', '${IDS.workspace}', '${M.otherProject}', '${M.otherEnvironment}', '${M.identity}', '${M.role}', now())`,
+    );
+    const schema = await columnsOf(client);
+    expect(() => {
+      deploy([...before, MACHINE]);
+    }).toThrow();
+    expect(await columnsOf(client)).toEqual(schema);
+  });
+
+  it('has a rollback script that restores the previous schema and allows reapplying', async () => {
+    const client = await fresh();
+    const schema = await columnsOf(client);
+    deploy([...before, MACHINE]);
+    // psql (libpq) does not understand Prisma's ?schema= parameter.
+    execSync(
+      `psql ${JSON.stringify(url.split('?')[0] ?? url)} -v ON_ERROR_STOP=1 -q -f ${JSON.stringify(ROLLBACK)}`,
+      {
+        stdio: 'pipe',
+      },
+    );
+    expect(await columnsOf(client)).toEqual(schema);
+    const grants = await client.$queryRawUnsafe<{ n: bigint }[]>(
+      `SELECT count(*) AS n FROM access_policies WHERE service_identity_id = '${M.identity}'`,
+    );
+    expect(Number(grants[0]?.n)).toBe(1);
+    deploy([...before, MACHINE]);
+    const tables = await client.$queryRawUnsafe<{ n: bigint }[]>(
+      `SELECT count(*) AS n FROM information_schema.tables WHERE table_name = 'machine_access_tokens'`,
+    );
+    expect(Number(tables[0]?.n)).toBe(1);
+  });
+});

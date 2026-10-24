@@ -17,6 +17,11 @@ const nextConfig: NextConfig = {
   ...(process.env.NEXT_OUTPUT === 'standalone'
     ? { output: 'standalone' as const, outputFileTracingRoot: resolve(process.cwd(), '../..') }
     : {}),
+  // The full stack e2e server moves the dev tools badge to the right: on narrow screens the
+  // expanded badge (any dev notice) otherwise covers the left navigation drawer. Notices still show.
+  ...(process.env.NEXT_DEV_INDICATOR_POSITION === 'bottom-right'
+    ? { devIndicators: { position: 'bottom-right' as const } }
+    : {}),
   reactStrictMode: true,
   poweredByHeader: false,
   // Development logs Server Function arguments by default, and secret

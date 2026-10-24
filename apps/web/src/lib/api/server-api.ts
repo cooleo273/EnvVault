@@ -26,6 +26,9 @@ function client(): EnvVaultClient {
     baseUrl: env.API_INTERNAL_URL ?? env.NEXT_PUBLIC_API_URL,
     getAccessToken: mintAccessToken,
     timeoutMs: 8_000,
+    // One retry for reads after a dropped connection; the SDK never repeats other methods
+    // unless they carry an idempotency key, which withApiMutation already handles.
+    retries: 1,
   });
 }
 

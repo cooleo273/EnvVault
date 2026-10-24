@@ -47,3 +47,19 @@ test.describe('landing page', () => {
     expect(scrollWidth).toBeLessThanOrEqual(375);
   });
 });
+
+test.describe('production build on a phone', () => {
+  test.use({ viewport: { width: 375, height: 800 }, hasTouch: true, isMobile: true });
+
+  // The signed in drawer test runs on next dev, where the dev tools badge can cover it.
+  // This checks that the production build has no such overlay to intercept taps.
+  test('renders no development overlay', async ({ page }) => {
+    for (const path of ['/', '/login', '/signup']) {
+      await page.goto(path);
+      await expect(page.locator('nextjs-portal')).toHaveCount(0);
+      await expect(page.locator('script[data-nextjs-dev-overlay]')).toHaveCount(0);
+      const corner = await page.evaluate(() => document.elementFromPoint(24, 760)?.tagName ?? '');
+      expect(corner.toLowerCase()).not.toBe('nextjs-portal');
+    }
+  });
+});

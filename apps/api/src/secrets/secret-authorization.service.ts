@@ -2,7 +2,7 @@ import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { createRepositories, type Repositories } from '@envvault/database';
 import { currentEnvironmentPermissions } from '../auth/current-access.js';
 import { AUTH_ERROR_CODES, type PermissionKey } from '@envvault/shared';
-import type { AuthorizedEnvironment, Principal } from '../auth/principal.js';
+import type { AuthorizedEnvironment, MachinePrincipal, Principal } from '../auth/principal.js';
 import { ApiException } from '../common/api-exception.js';
 import { DatabaseService } from '../database/database.service.js';
 
@@ -12,6 +12,16 @@ export interface SecretRequestContext {
   environment: AuthorizedEnvironment;
   requestId: string | null;
 }
+
+/** A machine identity acting on an environment its grants allow. */
+export interface MachineRequestContext {
+  machine: MachinePrincipal;
+  environment: AuthorizedEnvironment;
+  requestId: string | null;
+}
+
+/** Either kind of caller, for decryption and audit (never for permission checks). */
+export type VaultContext = SecretRequestContext | MachineRequestContext;
 
 /**
  * Capability checks for secret routes, on top of the global guard.

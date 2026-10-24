@@ -15,9 +15,14 @@ overrides:
   mysql2: 3.24.5
   # Prisma's config loader (GHSA-ggr8-5vv4-36mx). Prisma 7.10.1 ships this same version.
   deepmerge-ts: 8.0.2
-
-# Reviewed 2026-10-21; revisit when fixes ship. CI fails on any other high or critical advisory.
-auditConfig:
-  ignoreGhsas:
-    # braces in the ESLint Next.js plugin (lint time only). No patched release exists yet.
-    - GHSA-vfj7-8cjw-p6xm
+  # better-call (Neon Auth's Better Auth) resolved its zod peer to 4.5.4 (GHSA-mrhx-c7xc-m3w5,
+  # memory exhaustion on oversized collections). Same major; EnvVault's own packages use 4.6.6.
+  'zod@<4.6.6': 4.6.6
+  # Advisories published 2026-10-22 to 2026-10-24, each fixed in the same major:
+  # body-parser (Express, request bodies; GHSA-27r3-jxmh-p828, denial of service),
+  # multer (pinned exactly by @nestjs/platform-express; GHSA-q7qp-rjg7-q26m),
+  # undici (jsdom, tests only) and fast-uri (Nest CLI, build only).
+  'body-parser@>=2.0.0 <2.4.0': 2.4.0
+  'multer@>=2.0.0 <2.5.0': 2.5.0
+  'undici@>=8.0.0 <8.12.2': 8.12.2
+  'fast-uri@>=3.0.0 <3.1.9': 3.1.9

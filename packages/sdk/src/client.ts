@@ -1,4 +1,32 @@
 import {
+  type CreateMachineGrantInput,
+  type CreateMachineIdentityInput,
+  type CreateServiceCredentialInput,
+  type DisableMachineIdentityInput,
+  type IssuedServiceCredential,
+  issuedServiceCredentialSchema,
+  type MachineActivityPage,
+  machineActivityPageSchema,
+  type MachineEnvironment,
+  machineEnvironmentSchema,
+  type MachineIdentityList,
+  machineIdentityListSchema,
+  type MachineIdentityQuery,
+  type MachineIdentitySummary,
+  machineIdentitySummarySchema,
+  type MachineSelf,
+  machineSelfSchema,
+  type MachineToken,
+  type MachineTokenInput,
+  machineTokenSchema,
+  type MachineVariableList,
+  machineVariableListSchema,
+  type RevokeServiceCredentialInput,
+  type RotateServiceCredentialInput,
+  type ServiceCredential,
+  serviceCredentialListSchema,
+  serviceCredentialSchema,
+  type UpdateMachineIdentityInput,
   type CompareEnvironmentsInput,
   API_PROTOCOL_VERSION,
   type CliDeviceRequest,
@@ -182,6 +210,8 @@ interface RequestOptions<T> {
   schema?: z.ZodType<T>;
   body?: unknown;
   authenticated?: boolean;
+  /** Sent instead of the client's access token (the service credential at the exchange). */
+  bearer?: string;
   acceptedErrorStatuses?: number[];
 }
 
@@ -1257,6 +1287,240 @@ export class EnvVaultClient {
     });
   }
 
+  /* ------------------------------------------------- machine identities */
+
+  listMachineIdentities(
+    workspaceId: string,
+    projectId: string,
+    query: MachineIdentityQuery = {},
+  ): Promise<MachineIdentityList> {
+    return this.request(`${machinePath(workspaceId, projectId)}${toQuery(query)}`, {
+      schema: machineIdentityListSchema,
+    });
+  }
+
+  createMachineIdentity(
+    workspaceId: string,
+    projectId: string,
+    input: CreateMachineIdentityInput,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(machinePath(workspaceId, projectId), {
+      method: 'POST',
+      body: input,
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  machineIdentity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(machinePath(workspaceId, projectId, identityId), {
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  updateMachineIdentity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    input: UpdateMachineIdentityInput,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(machinePath(workspaceId, projectId, identityId), {
+      method: 'PATCH',
+      body: input,
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  disableMachineIdentity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    input: DisableMachineIdentityInput = {},
+  ): Promise<MachineIdentitySummary> {
+    return this.request(`${machinePath(workspaceId, projectId, identityId)}/disable`, {
+      method: 'POST',
+      body: input,
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  /** Needs a recent step up. */
+  enableMachineIdentity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(`${machinePath(workspaceId, projectId, identityId)}/enable`, {
+      method: 'POST',
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  async retireMachineIdentity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+  ): Promise<void> {
+    await this.request(machinePath(workspaceId, projectId, identityId), {
+      method: 'DELETE',
+      schema: noContentSchema,
+    });
+  }
+
+  async serviceCredentials(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+  ): Promise<ServiceCredential[]> {
+    return (
+      await this.request(`${machinePath(workspaceId, projectId, identityId)}/credentials`, {
+        schema: serviceCredentialListSchema,
+      })
+    ).items;
+  }
+
+  /** Needs a recent step up. The token in the result is shown once; keep it out of logs. */
+  issueServiceCredential(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    input: CreateServiceCredentialInput,
+  ): Promise<IssuedServiceCredential> {
+    return this.request(`${machinePath(workspaceId, projectId, identityId)}/credentials`, {
+      method: 'POST',
+      body: input,
+      schema: issuedServiceCredentialSchema,
+    });
+  }
+
+  /** Needs a recent step up. Not retried: a repeat would rotate the replacement. */
+  rotateServiceCredential(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    credentialId: string,
+    input: RotateServiceCredentialInput = {},
+  ): Promise<IssuedServiceCredential> {
+    return this.request(
+      `${machinePath(workspaceId, projectId, identityId)}/credentials/${encodeURIComponent(credentialId)}/rotate`,
+      { method: 'POST', body: input, schema: issuedServiceCredentialSchema },
+    );
+  }
+
+  /** Needs a recent step up. */
+  revokeServiceCredential(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    credentialId: string,
+    input: RevokeServiceCredentialInput = {},
+  ): Promise<ServiceCredential> {
+    return this.request(
+      `${machinePath(workspaceId, projectId, identityId)}/credentials/${encodeURIComponent(credentialId)}/revoke`,
+      { method: 'POST', body: input, schema: serviceCredentialSchema },
+    );
+  }
+
+  /** ALLOW needs a recent step up and the role's permissions on that environment yourself. */
+  grantMachineAccess(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    input: CreateMachineGrantInput,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(`${machinePath(workspaceId, projectId, identityId)}/grants`, {
+      method: 'POST',
+      body: input,
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  removeMachineGrant(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    grantId: string,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(
+      `${machinePath(workspaceId, projectId, identityId)}/grants/${encodeURIComponent(grantId)}`,
+      { method: 'DELETE', schema: machineIdentitySummarySchema },
+    );
+  }
+
+  machineIdentityActivity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    query: ActivityQuery = {},
+  ): Promise<MachineActivityPage> {
+    return this.request(
+      `${machinePath(workspaceId, projectId, identityId)}/activity${toQuery(query)}`,
+      { schema: machineActivityPageSchema },
+    );
+  }
+
+  /* --------------------------------------------- machine side (evv_mt_) */
+
+  /**
+   * Exchanges a service credential for a machine access token. The
+   * credential goes in the Authorization header of this one request only;
+   * use the returned token (via `getAccessToken`) for the other machine calls.
+   */
+  exchangeServiceCredential(
+    credential: string,
+    input: MachineTokenInput = {},
+  ): Promise<MachineToken> {
+    return this.request('/machine/token', {
+      method: 'POST',
+      body: input,
+      bearer: credential,
+      schema: machineTokenSchema,
+    });
+  }
+
+  async revokeMachineToken(): Promise<void> {
+    await this.request('/machine/token/revoke', { method: 'POST', schema: noContentSchema });
+  }
+
+  machineSelf(): Promise<MachineSelf> {
+    return this.request('/machine/identity', { schema: machineSelfSchema });
+  }
+
+  async machineEnvironments(): Promise<MachineEnvironment[]> {
+    return (
+      await this.request('/machine/environments', {
+        schema: z.object({ items: z.array(machineEnvironmentSchema) }),
+      })
+    ).items;
+  }
+
+  machineEnvironment(environmentId: string): Promise<MachineEnvironment> {
+    return this.request(`/machine/environments/${encodeURIComponent(environmentId)}`, {
+      schema: machineEnvironmentSchema,
+    });
+  }
+
+  machineVariables(environmentId: string): Promise<MachineVariableList> {
+    return this.request(`/machine/environments/${encodeURIComponent(environmentId)}/variables`, {
+      schema: machineVariableListSchema,
+    });
+  }
+
+  /** Decrypted values for the calling process. Needs `secret:runtime`; never cached. */
+  machineRuntime(
+    environmentId: string,
+    input: RuntimeConfigurationInput = {},
+  ): Promise<RuntimeConfiguration> {
+    return this.request(`/machine/environments/${encodeURIComponent(environmentId)}/runtime`, {
+      method: 'POST',
+      body: input,
+      schema: runtimeConfigurationSchema,
+    });
+  }
+
   retentionPolicy(workspaceId: string): Promise<RetentionPolicy> {
     return this.request(`/workspaces/${workspaceId}/retention`, { schema: retentionPolicySchema });
   }
@@ -1304,7 +1568,9 @@ export class EnvVaultClient {
     const method = options.method ?? 'GET';
     const headers: Record<string, string> = { accept: 'application/json' };
     if (this.options.userAgent) headers['user-agent'] = this.options.userAgent;
-    if (options.authenticated !== false) {
+    if (options.bearer !== undefined) {
+      headers.authorization = `Bearer ${options.bearer}`;
+    } else if (options.authenticated !== false) {
       const token = await this.getAccessToken?.();
       if (!token) {
         throw new EnvVaultApiError(401, {
@@ -1422,6 +1688,11 @@ function snapshotPath(
   snapshotId: string,
 ): string {
   return `${environmentPath(workspaceId, projectId, environmentId)}/snapshots/${encodeURIComponent(snapshotId)}`;
+}
+
+function machinePath(workspaceId: string, projectId: string, identityId?: string): string {
+  const base = `${projectPath(workspaceId, projectId)}/machine-identities`;
+  return identityId ? `${base}/${encodeURIComponent(identityId)}` : base;
 }
 
 function workspacePath(workspaceId: string): string {

@@ -32,6 +32,7 @@ import {
   AUTHORIZATION_KEY,
   type AuthorizationRequirement,
   IS_PUBLIC_KEY,
+  MACHINE_ROUTE_KEY,
   REQUIRE_STEP_UP_KEY,
 } from './auth.decorators.js';
 import type { AuthenticatedRequest } from './principal.js';
@@ -137,6 +138,12 @@ export class AuthorizationGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    // Machine routes authorize in their service, per environment, against
+    // the identity's grants and token scopes; people never reach them.
+    if (this.reflector.getAllAndOverride<boolean>(MACHINE_ROUTE_KEY, targets)) {
+      if (!request.machine) throw forbidden();
+      return true;
+    }
     const principal = request.principal;
     if (!principal) {
       throw new ApiException(

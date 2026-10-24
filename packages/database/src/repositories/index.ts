@@ -1,5 +1,6 @@
 import { AuditSealRepository } from './audit-seal.repository.js';
 import { CliAuthRepository } from './cli-auth.repository.js';
+import { MachineIdentityRepository } from './machine-identity.repository.js';
 import { IdempotencyRepository } from './idempotency.repository.js';
 import { MaintenanceJobRepository, RetentionRepository } from './retention.repository.js';
 import { KeyMaintenanceRepository } from './key-maintenance.repository.js';
@@ -25,8 +26,19 @@ import { WorkspaceRepository } from './workspace.repository.js';
 export {
   AuditRepository,
   type AuditEventInput,
+  type ServiceAuditEventInput,
   type SystemAuditEventInput,
 } from './audit.repository.js';
+export {
+  MachineIdentityRepository,
+  type CredentialForExchange,
+  type MachineEnvironmentGrants,
+  type MachineGrantRecord,
+  type MachineIdentityRecord,
+  type MachineTokenRecord,
+  type NewServiceCredential,
+  type ServiceCredentialRecord,
+} from './machine-identity.repository.js';
 export { AuthStateRepository, MAX_STEP_UP_TTL_SECONDS } from './auth-state.repository.js';
 export {
   effectiveInvitationStatus,
@@ -172,6 +184,7 @@ export function createRepositories(db: DbClient) {
     authState: new AuthStateRepository(db),
     cliAuth: new CliAuthRepository(db),
     invitations: new InvitationRepository(db),
+    machineIdentities: new MachineIdentityRepository(db),
     memberships: new MembershipRepository(db),
     projects: new ProjectRepository(db),
     projectMembers: new ProjectMemberRepository(db),

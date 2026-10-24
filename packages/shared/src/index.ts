@@ -16,3 +16,4 @@ export * from './domain/safe-pattern.js';
 export * from './schemas/environment-intelligence.js';
 export * from './schemas/retention.js';
 export * from './schemas/cli.js';
+export * from './schemas/machine.js';

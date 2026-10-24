@@ -32,14 +32,54 @@ export class CliError extends Error {
 
 const SIGNED_OUT = new Set(['UNAUTHENTICATED', 'TOKEN_EXPIRED', 'TOKEN_REVOKED', 'TOKEN_INVALID']);
 
+const ROTATE = 'Issue a new credential in the project settings and update the CI secret.';
+const MACHINE_AUTH: Record<string, { message: string; hint: string } | undefined> = {
+  INVALID_CREDENTIAL: {
+    message: 'The service credential is not valid.',
+    hint: 'Check that the CI secret holds the whole evv_sk_ value.',
+  },
+  SERVICE_CREDENTIAL_NOT_ACCEPTED: {
+    message: 'The service credential was sent where an access token belongs.',
+    hint: 'Use ENVVAULT_SERVICE_CREDENTIAL with this CLI; it exchanges the credential for you.',
+  },
+  CREDENTIAL_EXPIRED: { message: 'The service credential expired.', hint: ROTATE },
+  CREDENTIAL_REVOKED: { message: 'The service credential was revoked.', hint: ROTATE },
+  IDENTITY_DISABLED: {
+    message: 'The machine identity is disabled.',
+    hint: 'Ask a project admin to enable it in the project settings.',
+  },
+  IDENTITY_EXPIRED: {
+    message: 'The machine identity expired.',
+    hint: 'Ask a project admin to extend it in the project settings.',
+  },
+};
+
 /**
  * Turns any failure into a message safe to print. API messages are client
  * safe by contract; everything else is reduced to a category, so no stack,
  * URL, header or response body reaches the terminal.
  */
-export function toCliError(error: unknown, links: { confirmUrl?: string } = {}): CliError {
+export function toCliError(
+  error: unknown,
+  links: { confirmUrl?: string; machine?: boolean } = {},
+): CliError {
   if (error instanceof CliError) return error;
   if (error instanceof EnvVaultApiError) {
+    const machine = MACHINE_AUTH[error.code];
+    if (machine) return new CliError(machine.message, EXIT.auth, machine.hint);
+    if (links.machine && SIGNED_OUT.has(error.code)) {
+      return new CliError(
+        'The machine access token was refused.',
+        EXIT.auth,
+        'Run the command again; if it keeps failing, check the identity in the project settings.',
+      );
+    }
+    if (error.code === 'SCOPE_NOT_GRANTED') {
+      return new CliError(error.message, EXIT.forbidden, 'Check the credential scopes and grants.');
+    }
+    if (error.code === 'MACHINE_TOKEN_NOT_ALLOWED' || error.code === 'MACHINE_TOKEN_REQUIRED') {
+      return new CliError(error.message, EXIT.forbidden);
+    }
     if (SIGNED_OUT.has(error.code)) {
       return new CliError(
         error.code === 'TOKEN_REVOKED' ? 'Your CLI session was ended.' : 'You are not signed in.',

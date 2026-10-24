@@ -1,0 +1,17 @@
+# gitleaks configuration: the default rules plus EnvVault's own token formats.
+# The CI gitleaks action reads this file from the repository root.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "envvault-service-credential"
+description = "EnvVault service credential (machine identity)"
+regex = '''\bevv_sk_[A-Za-z0-9]{16}_[A-Za-z0-9_-]{43}'''
+keywords = ["evv_sk_"]
+
+[[rules]]
+id = "envvault-access-token"
+description = "EnvVault machine or CLI access or refresh token"
+regex = '''\bevv_(?:mt|at|rt)_[A-Za-z0-9_-]{43}'''
+keywords = ["evv_mt_", "evv_at_", "evv_rt_"]

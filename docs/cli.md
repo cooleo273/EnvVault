@@ -189,16 +189,47 @@ by default, `AUTH_STEP_UP_TTL_SECONDS`).
 Automated tests run on macOS and Linux; Windows behaviour is covered by path
 and configuration unit tests, not by a Windows CI job yet.
 
+## 8b. Machine identities (CI and servers)
+
+With `ENVVAULT_SERVICE_CREDENTIAL` (or `ENVVAULT_SERVICE_CREDENTIAL_FILE`)
+set, the CLI acts as that machine identity instead of a person. Nothing is
+stored locally.
+
+```bash
+envvault auth service --from-env            # or --from-file <path>, --from-stdin
+envvault run --env qa -- npm run build
+envvault env list                           # environments granted to the identity
+envvault doctor
+```
+
+| Command                                                      | In machine mode                                                                    |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `auth service`                                               | Exchanges the credential, prints identity, scopes and environments, ends the token |
+| `whoami`, `auth status`                                      | The machine identity                                                               |
+| `env list`, `env info`                                       | Environments granted to the identity                                               |
+| `run`                                                        | Loads values through `/machine/.../runtime`; the child never sees the credential   |
+| `doctor`                                                     | Credential, identity, linked environment and runtime access                        |
+| `login`, `logout`, `init`, `workspace`, `project`, `env use` | Refused (exit 2): they act as a person                                             |
+| `pull`                                                       | Refused (exit 5): machines cannot write `.env` files                               |
+
+Each command exchanges the credential for a 15 minute access token and
+revokes it when done. The credential has no command line option, so it never
+appears in process listings or shell history. Credential files must be
+readable by their owner only. Details and CI examples:
+[ci-authentication.md](ci-authentication.md).
+
 ## 9. Troubleshooting
 
-| Symptom                                                       | Fix                                                                   |
-| ------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `The operating system credential store is not available.`     | On a host without one, `export ENVVAULT_CREDENTIAL_STORE=file`        |
-| `The credential file can be read by other users.`             | `chmod 600` the file shown, or `envvault logout`                      |
-| `This environment is protected: confirm your password first.` | Open the printed `/cli/confirm` link, then retry                      |
-| `Missing secret:runtime here` in `doctor`                     | Ask a project admin for a role or environment grant that includes it  |
-| `The API speaks protocol …`                                   | Update the CLI or point it at a matching API                          |
-| Exit code 9                                                   | Wait a minute; runtime loads are limited per user and per environment |
+| Symptom                                                       | Fix                                                                                            |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `The operating system credential store is not available.`     | On a host without one, `export ENVVAULT_CREDENTIAL_STORE=file`                                 |
+| `The credential file can be read by other users.`             | `chmod 600` the file shown, or `envvault logout`                                               |
+| `This environment is protected: confirm your password first.` | Open the printed `/cli/confirm` link, then retry                                               |
+| `Missing secret:runtime here` in `doctor`                     | Ask a project admin for a role or environment grant that includes it                           |
+| `The API speaks protocol …`                                   | Update the CLI or point it at a matching API                                                   |
+| Exit code 9                                                   | Wait a minute; runtime loads are limited per user and per environment                          |
+| `The service credential was revoked.` or `expired.` (exit 4)  | Issue or rotate a credential on the project's Machine identities page and update the CI secret |
+| `… is not available with a service credential.`               | Unset `ENVVAULT_SERVICE_CREDENTIAL` and `ENVVAULT_SERVICE_CREDENTIAL_FILE` to act as yourself  |
 
 ## 10. Tests
 

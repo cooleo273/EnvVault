@@ -17,7 +17,10 @@ export type SensitiveAction =
   | 'access-change'
   | 'step-up'
   | 'runtime'
-  | 'cli-approve';
+  | 'cli-approve'
+  | 'machine-token'
+  | 'machine-runtime'
+  | 'credential-issue';
 
 interface Rule {
   limit: number;
@@ -36,9 +39,15 @@ const MESSAGES: Record<SensitiveAction, string> = {
   'step-up': 'Too many password confirmations. Wait a few minutes and try again.',
   runtime: 'Too many runs loaded values in a short time. Wait a minute and try again.',
   'cli-approve': 'Too many CLI sign in approvals. Wait a few minutes and try again.',
+  'machine-token': 'Too many token requests for this credential. Wait a minute and try again.',
+  'machine-runtime':
+    'Too many runtime loads by this machine identity. Wait a minute and try again.',
+  'credential-issue':
+    'Too many credentials issued in a short time. Wait a few minutes and try again.',
 };
 
 export interface ConsumeInput {
+  /** The person, or `machine:<identity id>` / `credential:<lookup id>` for machines. */
   userId: string;
   action: SensitiveAction;
   /** A variable, environment or similar; limits the same target separately. */
@@ -82,6 +91,13 @@ export class SensitiveRateLimiter {
         resourceLimit: env.SECRET_RUNTIME_RESOURCE_RATE_LIMIT,
       },
       'cli-approve': { limit: 10, windowMs: 5 * minute },
+      'machine-token': { limit: env.MACHINE_TOKEN_RATE_LIMIT, windowMs: minute },
+      'machine-runtime': {
+        limit: env.MACHINE_RUNTIME_RATE_LIMIT,
+        windowMs: minute,
+        resourceLimit: env.MACHINE_RUNTIME_RESOURCE_RATE_LIMIT,
+      },
+      'credential-issue': { limit: 20, windowMs: 5 * minute },
     };
   }
 

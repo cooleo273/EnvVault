@@ -15,7 +15,7 @@ import type { ResilientThrottlerStorage } from './resilient.storage.js';
 const WINDOW_MS = 60_000;
 
 /**
- * General per user limit, after authentication. Requests from browsers all
+ * General per user (and per machine identity) limit, after authentication. Requests from browsers all
  * reach the API from the web server's address, so the IP limit cannot tell
  * users apart; this one does. Falls back to per instance counting when the
  * shared store is down.
@@ -29,10 +29,14 @@ export class UserRateLimitGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    const userId = request.principal?.userId;
-    if (!userId) return true;
+    const caller = request.principal
+      ? `user:${request.principal.userId}`
+      : request.machine
+        ? `machine:${request.machine.serviceIdentityId}`
+        : null;
+    if (!caller) return true;
     const record = await this.storage.increment(
-      `user:${userId}`,
+      caller,
       WINDOW_MS,
       this.env.RATE_LIMIT_USER_MAX,
       WINDOW_MS,

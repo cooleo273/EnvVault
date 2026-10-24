@@ -2,7 +2,7 @@
 /*
  * Scans files tracked by Git (and staged changes) for credentials and key
  * material: EnvVault keyrings, recovery keys, backups and integrity keys,
- * private keys, cloud and service tokens, and database URLs with real
+ * EnvVault service credentials and access tokens, private keys, cloud and service tokens, and database URLs with real
  * passwords. Prints file and line only, never the match.
  *
  *   node scripts/scan-secrets.mjs           # tracked files
@@ -26,6 +26,10 @@ const RULES = [
     'Private key',
     /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP |ENCRYPTED )?PRIVATE KEY( BLOCK)?-----/,
   ],
+  // Prefixes exist so leaks are recognisable: service credentials, machine,
+  // CLI access and CLI refresh tokens.
+  ['EnvVault service credential', /\bevv_sk_[A-Za-z0-9]{16}_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/],
+  ['EnvVault access token', /\bevv_(?:mt|at|rt)_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/],
   ['AWS access key', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
   ['GitHub token', /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{60,}\b/],
   ['Neon API key', /\bnapi_[a-z0-9]{40,}\b/],
