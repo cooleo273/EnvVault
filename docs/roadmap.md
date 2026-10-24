@@ -4,27 +4,27 @@ Where EnvVault stands and what comes next. "Completed" means implemented and
 tested on a branch; nothing here is production ready (see
 [security-hardening.md](security-hardening.md#10-remaining-risks-and-production-blockers)).
 
-| Phase | Scope                                                                    | Status                               |
-| ----- | ------------------------------------------------------------------------ | ------------------------------------ |
-| 1     | Authentication (Neon Auth), workspaces, members, invitations             | Completed                            |
-| 2     | Projects, custom environments, per environment access                    | Completed                            |
-| 3A    | Envelope encryption (AES-256-GCM, data keys per version)                 | Completed                            |
-| 3B    | Secrets: storage, versions, reveal, audit                                | Completed                            |
-| 3C    | .env import and export, history and rollback, bulk actions               | Completed                            |
-| 3D    | Environment comparison, inheritance, validation, snapshots               | Completed                            |
-| 3E    | Security hardening, key recovery, deployment readiness                   | Completed (PR #1 open, not merged)   |
-| 4A    | Developer CLI: browser sign in, project linking, `run`, `pull`, `doctor` | Completed (local branch, not pushed) |
-| 4B    | Machine identities, service credentials, CI/CD authentication            | In progress (this branch)            |
-| 4C    | Public API and SDK                                                       | Planned                              |
-| 5     | Deployment integrations                                                  | Planned                              |
-| 6     | Approvals and collaboration                                              | Planned                              |
-| 7     | Monitoring and rotation                                                  | Planned                              |
-| 8     | Enterprise features                                                      | Planned                              |
-| 9     | Deployment and release                                                   | Planned                              |
+| Phase | Scope                                                                    | Status                                         |
+| ----- | ------------------------------------------------------------------------ | ---------------------------------------------- |
+| 1     | Authentication (Neon Auth), workspaces, members, invitations             | Completed                                      |
+| 2     | Projects, custom environments, per environment access                    | Completed                                      |
+| 3A    | Envelope encryption (AES-256-GCM, data keys per version)                 | Completed                                      |
+| 3B    | Secrets: storage, versions, reveal, audit                                | Completed                                      |
+| 3C    | .env import and export, history and rollback, bulk actions               | Completed                                      |
+| 3D    | Environment comparison, inheritance, validation, snapshots               | Completed                                      |
+| 3E    | Security hardening, key recovery, deployment readiness                   | Completed (PR #1 open, not merged)             |
+| 4A    | Developer CLI: browser sign in, project linking, `run`, `pull`, `doctor` | Completed (local branch, not pushed)           |
+| 4B    | Machine identities, service credentials, CI/CD authentication            | Implemented (local commit 64d5665, not pushed) |
+| 4C    | Public API and SDK                                                       | Next                                           |
+| 5     | Deployment integrations                                                  | Planned                                        |
+| 6     | Approvals and collaboration                                              | Planned                                        |
+| 7     | Monitoring and rotation                                                  | Planned                                        |
+| 8     | Enterprise features                                                      | Planned                                        |
+| 9     | Deployment and release                                                   | Planned                                        |
 
-## Phase 4B
+## Phase 4B (implemented)
 
-Done on this branch:
+Implemented on `phase-4b/machine-identities`:
 
 - Machine identities per project with lifecycle (disable, enable, retire),
   expiry, credential lifetime limits and activity.
@@ -47,9 +47,9 @@ Not in 4B:
 
 ## Later phases
 
-The outlines below are placeholders until each phase is specified.
+Phase 4C is next. The outlines below are placeholders until each phase is specified.
 
-- **4C, Public API and SDK.** A documented, versioned public surface and a
+- **4C, Public API and SDK (next).** A documented, versioned public surface and a
   published SDK and CLI.
 - **5, Deployment integrations.** Delivering configuration to hosting and
   deployment platforms with machine identities.
