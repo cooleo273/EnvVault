@@ -1,3 +1,4 @@
+import { constants } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   COMMAND_NOT_FOUND,
@@ -237,7 +238,8 @@ describe('command', () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     process.emit('SIGUSR2', 'SIGUSR2');
     // SIGUSR2 is forwarded as SIGUSR2; the child has no handler for it and ends.
-    expect((await pending).code).toBe(128 + 31);
+    // Signal numbers differ between systems (SIGUSR2 is 31 on macOS, 12 on Linux).
+    expect((await pending).code).toBe(128 + constants.signals.SIGUSR2);
   });
 });
 
