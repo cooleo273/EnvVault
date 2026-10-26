@@ -26,6 +26,9 @@ await envvault.close();
 
 Never log values, and never pass them to code that runs in a browser.
 
+In GitHub Actions, pass `oidcToken: () => core.getIDToken(audience)` instead of a
+credential to authenticate with the job's OIDC token through a trust binding.
+
 ## People and the CLI
 
 ```ts

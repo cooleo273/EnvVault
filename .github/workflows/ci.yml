@@ -50,6 +50,10 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # The action runs from its committed bundle; it must match the source.
+      - name: GitHub Action bundle is up to date
+        run: git diff --exit-code -- packages/github-action/dist
+
   security:
     name: Secret scanning & dependency audit
     runs-on: ubuntu-latest

@@ -198,8 +198,8 @@ databases also need `pnpm db:sync-catalog` for the new roles.
 
 ## 9. Not included
 
-- Workload identity federation (OIDC from GitHub Actions and others) is not
-  implemented. The `service_credentials` table reserves the
-  `OIDC_FEDERATION` type for it.
+- Workload identity federation beyond GitHub Actions. GitHub OIDC trust
+  bindings (Phase 5A) are `OIDC_FEDERATION` credentials; see
+  [integrations/github-oidc.md](integrations/github-oidc.md).
 - Deployment synchronization (pushing values to hosting providers) is Phase 5.
 - Machines cannot write values; there is no machine write scope.

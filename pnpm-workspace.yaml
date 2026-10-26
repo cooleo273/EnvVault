@@ -8,6 +8,8 @@ allowBuilds:
   '@prisma/engines': true
   # Only prints a funding banner; not needed.
   core-js: false
+  # Only re-checks the platform binary, which comes from @esbuild/<platform> anyway.
+  esbuild: false
   prisma: true
 
 # Security fixes in transitive dependencies, each reviewed (docs/security-hardening.md, section 8).

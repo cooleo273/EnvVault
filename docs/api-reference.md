@@ -22,13 +22,14 @@ sending credentials (`checkCompatibility` in both SDKs). See
 
 ## 2. Authentication
 
-| Caller           | Token                                                        | Where it works                                      |
-| ---------------- | ------------------------------------------------------------ | --------------------------------------------------- |
-| Person           | Short lived Neon Auth JWT minted by the web app's server     | Every route not marked otherwise                    |
-| CLI              | `evv_at_` access token from the browser approved device flow | Routes whose `x-envvault-callers` includes `cli`    |
-| Machine identity | `evv_mt_` access token from `POST /machine/token`            | `/machine` routes only                              |
-| Exchange         | `evv_sk_` service credential                                 | `POST /machine/token` only                          |
-| Anyone           | none                                                         | Health, meta, OpenAPI, CLI device start and polling |
+| Caller           | Token                                                        | Where it works                                                                               |
+| ---------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Person           | Short lived Neon Auth JWT minted by the web app's server     | Every route not marked otherwise                                                             |
+| CLI              | `evv_at_` access token from the browser approved device flow | Routes whose `x-envvault-callers` includes `cli`                                             |
+| Machine identity | `evv_mt_` access token from `POST /machine/token`            | `/machine` routes only                                                                       |
+| Exchange         | `evv_sk_` service credential                                 | `POST /machine/token` only                                                                   |
+| GitHub exchange  | GitHub Actions OIDC token                                    | `POST /machine/oidc/token` only ([integrations/github-oidc.md](integrations/github-oidc.md)) |
+| Anyone           | none                                                         | Health, meta, OpenAPI, CLI device start and polling                                          |
 
 Each operation in the OpenAPI document lists its `security` schemes and
 `x-envvault-callers`. Details: [api-authentication.md](api-authentication.md).
@@ -108,6 +109,7 @@ Published in the OpenAPI document as `x-envvault-error-codes`.
 | retention    | `RETENTION_POLICY_EMPTY`, `RETENTION_RUN_ACTIVE`                                                                                                                                                                                                                                                                                                                                                                                                            |
 | cli          | `ACCESS_DENIED`, `AUTHORIZATION_PENDING`, `CLI_TOKEN_NOT_ALLOWED`, `EXPIRED_TOKEN`, `INVALID_GRANT`, `RUNTIME_TOO_LARGE`, `SLOW_DOWN`                                                                                                                                                                                                                                                                                                                       |
 | machine      | `CREDENTIALS_UNAVAILABLE`, `CREDENTIAL_ALREADY_ROTATED`, `CREDENTIAL_EXPIRED`, `CREDENTIAL_LIMIT_REACHED`, `CREDENTIAL_REVOKED`, `GRANT_EXCEEDS_AUTHORITY`, `GRANT_EXISTS`, `IDENTITY_DISABLED`, `IDENTITY_EXPIRED`, `IDENTITY_LIMIT_REACHED`, `IDENTITY_NAME_TAKEN`, `IDENTITY_RETIRED`, `INVALID_CREDENTIAL`, `MACHINE_TOKEN_NOT_ALLOWED`, `MACHINE_TOKEN_REQUIRED`, `ROLE_NOT_MACHINE_GRANTABLE`, `SCOPE_NOT_GRANTED`, `SERVICE_CREDENTIAL_NOT_ACCEPTED` |
+| oidc         | `OIDC_BINDING_AMBIGUOUS`, `OIDC_BINDING_DISABLED`, `OIDC_BINDING_LIMIT_REACHED`, `OIDC_ISSUER_NOT_TRUSTED`, `OIDC_NO_MATCHING_BINDING`, `OIDC_PROTECTED_POLICY_REQUIRED`, `OIDC_PROVIDER_UNAVAILABLE`, `OIDC_TOKEN_EXPIRED`, `OIDC_TOKEN_INVALID`, `OIDC_TOKEN_REPLAYED`                                                                                                                                                                                    |
 
 ## 7. Rate limits
 

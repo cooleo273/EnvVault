@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+- GitHub Actions OIDC: `EnvVaultMachineClient` accepts `oidcToken` (and `oidc` binding hints)
+  instead of `credential`; `exchangeOidcToken` on `EnvVaultClient`.
+- Trust binding management methods (`listOidcTrustBindings` and the rest).
+
 ## 0.1.0 (unreleased)
 
 - `EnvVaultMachineClient` and `@envvault/sdk/node` (`machineClientFromEnvironment`).

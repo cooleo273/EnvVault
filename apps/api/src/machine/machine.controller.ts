@@ -14,6 +14,7 @@ import {
   type MachineToken,
   machineTokenInputSchema,
   type MachineVariableList,
+  oidcTokenInputSchema,
   type RuntimeConfiguration,
   runtimeConfigurationInputSchema,
 } from '@envvault/shared';
@@ -28,6 +29,7 @@ import { SensitiveRateLimit } from '../common/sensitive-rate-limit.js';
 import { UuidParam } from '../common/uuid-param.js';
 import { MachineAccessService } from './machine-access.service.js';
 import { MachineAuthService } from './machine-auth.service.js';
+import { OidcExchangeService } from './oidc-exchange.service.js';
 
 /**
  * The machine side of EnvVault. `POST /machine/token` exchanges a service
@@ -41,6 +43,7 @@ export class MachineController {
   constructor(
     private readonly auth: MachineAuthService,
     private readonly access: MachineAccessService,
+    private readonly oidc: OidcExchangeService,
   ) {}
 
   /**
@@ -58,6 +61,29 @@ export class MachineController {
     @Req() request: AuthenticatedRequest,
   ): Promise<MachineToken> {
     return this.auth.exchange(
+      extractBearerToken(request.headers.authorization) ?? null,
+      body,
+      request.ip ?? null,
+      requestIdOf(request),
+    );
+  }
+
+  /**
+   * GitHub Actions OIDC: the job's identity token (Authorization: Bearer
+   * <JWT>, audience as configured on the binding) is verified against the
+   * issuer's keys and exchanged for the same short lived access token as
+   * above. Public to the authentication guard for the same reason.
+   */
+  @Post('oidc/token')
+  @Public()
+  @SensitiveRateLimit()
+  @HttpCode(HttpStatus.OK)
+  oidcToken(
+    @Body(new ZodValidationPipe(oidcTokenInputSchema))
+    body: z.output<typeof oidcTokenInputSchema>,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<MachineToken> {
+    return this.oidc.exchange(
       extractBearerToken(request.headers.authorization) ?? null,
       body,
       request.ip ?? null,

@@ -7,6 +7,7 @@ import {
   type MachineToken,
   type MachineTokenInput,
   type machineTokenInputSchema,
+  OIDC_ERROR_CODES,
 } from '@envvault/shared';
 import type { z } from 'zod';
 import type { MachinePrincipal } from '../auth/principal.js';
@@ -254,6 +255,12 @@ export class MachineAuthService {
       return refuse(
         'credential_expired',
         unauthorized(MACHINE_ERROR_CODES.CREDENTIAL_EXPIRED, 'This service credential expired'),
+      );
+    }
+    if (credential.bindingDisabledAt) {
+      return refuse(
+        'binding_disabled',
+        unauthorized(OIDC_ERROR_CODES.OIDC_BINDING_DISABLED, 'This trust binding is disabled'),
       );
     }
     if (identity.status !== 'ACTIVE' || (identity.expiresAt && identity.expiresAt <= now)) {

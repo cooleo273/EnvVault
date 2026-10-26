@@ -123,6 +123,13 @@ import {
   workspaceMemberSchema,
   workspaceRoleSchema,
   workspaceSummarySchema,
+  createOidcTrustBindingInputSchema,
+  oidcBindingAttemptListSchema,
+  oidcTokenInputSchema,
+  oidcTrustBindingListSchema,
+  oidcTrustBindingQuerySchema,
+  oidcTrustBindingSchema,
+  updateOidcTrustBindingInputSchema,
 } from '@envvault/shared';
 import { z } from 'zod';
 
@@ -138,8 +145,11 @@ export interface RouteDoc {
   permission?: string;
   public?: boolean;
   stepUp?: boolean;
-  /** Machine routes: `credential` for the token exchange, `machine` for the rest. */
-  machine?: 'credential' | 'token';
+  /**
+   * Machine routes: `credential` for the service credential exchange, `oidc`
+   * for the GitHub OIDC exchange, `token` for the rest.
+   */
+  machine?: 'credential' | 'oidc' | 'token';
   query?: z.ZodType;
   body?: z.ZodType;
   /** Response schema; omitted for 204 No Content. */
@@ -1308,6 +1318,85 @@ export const ROUTES: readonly RouteDoc[] = [
     status: 200,
   },
   {
+    method: 'get',
+    path: `${P}/oidc-trust-bindings`,
+    summary: 'List GitHub Actions trust bindings of the project',
+    tag: 'GitHub Actions',
+    permission: 'service_identity:read',
+    query: oidcTrustBindingQuerySchema,
+    response: oidcTrustBindingListSchema,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: `${P}/oidc-trust-bindings`,
+    summary:
+      'Create a trust binding: let matching GitHub workflows authenticate as a machine identity',
+    tag: 'GitHub Actions',
+    permission: 'service_identity:manage',
+    stepUp: true,
+    body: createOidcTrustBindingInputSchema,
+    response: oidcTrustBindingSchema,
+    status: 201,
+  },
+  {
+    method: 'get',
+    path: `${P}/oidc-trust-bindings/{bindingId}`,
+    summary: 'Get a trust binding',
+    tag: 'GitHub Actions',
+    permission: 'service_identity:read',
+    response: oidcTrustBindingSchema,
+    status: 200,
+  },
+  {
+    method: 'patch',
+    path: `${P}/oidc-trust-bindings/{bindingId}`,
+    summary: 'Change a trust binding’s conditions or environments',
+    tag: 'GitHub Actions',
+    permission: 'service_identity:manage',
+    stepUp: true,
+    body: updateOidcTrustBindingInputSchema,
+    response: oidcTrustBindingSchema,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: `${P}/oidc-trust-bindings/{bindingId}/disable`,
+    summary: 'Disable a trust binding (its access tokens stop at once)',
+    tag: 'GitHub Actions',
+    permission: 'service_identity:manage',
+    response: oidcTrustBindingSchema,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: `${P}/oidc-trust-bindings/{bindingId}/enable`,
+    summary: 'Enable a trust binding again',
+    tag: 'GitHub Actions',
+    permission: 'service_identity:manage',
+    stepUp: true,
+    response: oidcTrustBindingSchema,
+    status: 200,
+  },
+  {
+    method: 'delete',
+    path: `${P}/oidc-trust-bindings/{bindingId}`,
+    summary: 'Delete a trust binding (revoked and kept for history)',
+    tag: 'GitHub Actions',
+    permission: 'service_identity:manage',
+    stepUp: true,
+    status: 204,
+  },
+  {
+    method: 'get',
+    path: `${P}/oidc-trust-bindings/{bindingId}/attempts`,
+    summary: 'Recent GitHub exchange attempts for a trust binding, with refusal reasons',
+    tag: 'GitHub Actions',
+    permission: 'service_identity:read',
+    response: oidcBindingAttemptListSchema,
+    status: 200,
+  },
+  {
     method: 'post',
     path: '/machine/token',
     summary: 'Exchange a service credential for a short lived machine access token',
@@ -1315,6 +1404,17 @@ export const ROUTES: readonly RouteDoc[] = [
     public: true,
     machine: 'credential',
     body: machineTokenInputSchema,
+    response: machineTokenSchema,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: '/machine/oidc/token',
+    summary: 'Exchange a GitHub Actions OIDC token for a short lived machine access token',
+    tag: 'Machine',
+    public: true,
+    machine: 'oidc',
+    body: oidcTokenInputSchema,
     response: machineTokenSchema,
     status: 200,
   },

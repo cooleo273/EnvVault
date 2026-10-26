@@ -3,6 +3,7 @@ import { CLI_ERROR_CODES } from './cli.js';
 import { INTELLIGENCE_ERROR_CODES } from './environment-intelligence.js';
 import { GENERAL_ERROR_CODES } from './error.js';
 import { MACHINE_ERROR_CODES } from './machine.js';
+import { OIDC_ERROR_CODES } from './oidc.js';
 import { PROJECT_ERROR_CODES } from './projects.js';
 import { RETENTION_ERROR_CODES } from './retention.js';
 import { SECRET_TRANSFER_ERROR_CODES } from './secret-transfers.js';
@@ -21,6 +22,7 @@ export const API_ERROR_CATALOG = {
   retention: RETENTION_ERROR_CODES,
   cli: CLI_ERROR_CODES,
   machine: MACHINE_ERROR_CODES,
+  oidc: OIDC_ERROR_CODES,
 } as const;
 
 export const API_ERROR_CODES: readonly string[] = [

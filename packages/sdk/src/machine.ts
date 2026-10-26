@@ -4,6 +4,7 @@ import type {
   MachineSelf,
   MachineToken,
   MachineVariableList,
+  OidcTokenInput,
   RuntimeConfiguration,
   RuntimeConfigurationInput,
 } from '@envvault/shared';
@@ -17,8 +18,17 @@ export interface EnvVaultMachineClientOptions extends Omit<
   /**
    * The service credential (`evv_sk_…`), or a function returning it (for
    * example from a secrets manager). It is sent only to `POST /machine/token`.
+   * Give either this or `oidcToken`.
    */
-  credential: string | (() => Promise<string>);
+  credential?: string | (() => Promise<string>);
+  /**
+   * GitHub Actions OIDC: returns a fresh identity token for the binding's
+   * audience (for example `core.getIDToken(audience)`). Called for every
+   * exchange, because each identity token is accepted once.
+   */
+  oidcToken?: () => Promise<string>;
+  /** Which trust binding to use, when the API cannot tell from the token alone. */
+  oidc?: Pick<OidcTokenInput, 'bindingId' | 'workspaceId' | 'projectId'>;
   /** Narrow access tokens to some of the credential's scopes. */
   scopes?: MachineScope[];
   /** Narrow access tokens to some environments of the identity's project. */
@@ -44,7 +54,8 @@ function matches(env: MachineEnvironment, ref: string): boolean {
  * to the process that needs them, and never log them.
  */
 export class EnvVaultMachineClient {
-  readonly #credential: string | (() => Promise<string>);
+  readonly #credential: string | (() => Promise<string>) | undefined;
+  readonly #oidcToken: (() => Promise<string>) | undefined;
   readonly #options: EnvVaultMachineClientOptions;
   readonly #anonymous: EnvVaultClient;
   readonly #api: EnvVaultClient;
@@ -52,8 +63,19 @@ export class EnvVaultMachineClient {
   #exchanging: Promise<MachineToken> | null = null;
 
   constructor(options: EnvVaultMachineClientOptions) {
-    const { credential, scopes: _scopes, environmentIds: _environments, ...client } = options;
+    const {
+      credential,
+      oidcToken,
+      oidc: _oidc,
+      scopes: _scopes,
+      environmentIds: _environments,
+      ...client
+    } = options;
+    if ((credential === undefined) === (oidcToken === undefined)) {
+      throw new Error('Give either credential or oidcToken');
+    }
     this.#credential = credential;
+    this.#oidcToken = oidcToken;
     this.#options = options;
     this.#anonymous = new EnvVaultClient(client);
     this.#api = new EnvVaultClient({ ...client, getAccessToken: () => this.accessToken() });
@@ -71,12 +93,21 @@ export class EnvVaultMachineClient {
   async authenticate(): Promise<MachineToken> {
     this.#exchanging ??= (async () => {
       try {
-        const credential =
-          typeof this.#credential === 'string' ? this.#credential : await this.#credential();
-        const token = await this.#anonymous.exchangeServiceCredential(credential, {
+        const narrowing = {
           ...(this.#options.scopes ? { scopes: this.#options.scopes } : {}),
           ...(this.#options.environmentIds ? { environmentIds: this.#options.environmentIds } : {}),
-        });
+        };
+        const token = this.#oidcToken
+          ? await this.#anonymous.exchangeOidcToken(await this.#oidcToken(), {
+              ...this.#options.oidc,
+              ...narrowing,
+            })
+          : await this.#anonymous.exchangeServiceCredential(
+              typeof this.#credential === 'string'
+                ? this.#credential
+                : await (this.#credential as () => Promise<string>)(),
+              narrowing,
+            );
         this.#token = token;
         return token;
       } finally {

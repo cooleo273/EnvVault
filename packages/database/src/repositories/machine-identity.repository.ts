@@ -137,7 +137,14 @@ export interface MachineTokenRecord {
   environmentIds: string[];
   expiresAt: Date;
   revokedAt: Date | null;
-  credential: { name: string; expiresAt: Date | null; revokedAt: Date | null };
+  credential: {
+    name: string;
+    type: 'API_TOKEN' | 'OIDC_FEDERATION';
+    expiresAt: Date | null;
+    revokedAt: Date | null;
+    /** Set for GitHub trust bindings: disabling one stops its tokens too. */
+    bindingDisabledAt: Date | null;
+  };
   identity: {
     name: string;
     projectId: string;
@@ -199,6 +206,7 @@ export class MachineIdentityRepository {
           by: ['serviceIdentityId'],
           where: {
             serviceIdentityId: { in: rows.map((r) => r.id) },
+            type: 'API_TOKEN',
             revokedAt: null,
             expiresAt: { gt: now },
           },
@@ -437,7 +445,12 @@ export class MachineIdentityRepository {
 
   async countActiveCredentials(identityId: string, now: Date): Promise<number> {
     return this.db.serviceCredential.count({
-      where: { serviceIdentityId: identityId, revokedAt: null, expiresAt: { gt: now } },
+      where: {
+        serviceIdentityId: identityId,
+        type: 'API_TOKEN',
+        revokedAt: null,
+        expiresAt: { gt: now },
+      },
     });
   }
 
@@ -585,8 +598,10 @@ export class MachineIdentityRepository {
         credential: {
           select: {
             name: true,
+            type: true,
             expiresAt: true,
             revokedAt: true,
+            oidcPolicy: { select: { disabledAt: true } },
             serviceIdentity: {
               select: {
                 name: true,
@@ -603,8 +618,12 @@ export class MachineIdentityRepository {
     });
     if (!row) return null;
     const { credential, ...rest } = row;
-    const { serviceIdentity, ...credentialRest } = credential;
-    return { ...rest, credential: credentialRest, identity: serviceIdentity };
+    const { serviceIdentity, oidcPolicy, ...credentialRest } = credential;
+    return {
+      ...rest,
+      credential: { ...credentialRest, bindingDisabledAt: oidcPolicy?.disabledAt ?? null },
+      identity: serviceIdentity,
+    };
   }
 
   async revokeToken(id: string, now: Date): Promise<void> {

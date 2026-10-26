@@ -1,6 +1,7 @@
 import { AuditSealRepository } from './audit-seal.repository.js';
 import { CliAuthRepository } from './cli-auth.repository.js';
 import { MachineIdentityRepository } from './machine-identity.repository.js';
+import { OidcTrustRepository } from './oidc-trust.repository.js';
 import { IdempotencyRepository } from './idempotency.repository.js';
 import { MaintenanceJobRepository, RetentionRepository } from './retention.repository.js';
 import { KeyMaintenanceRepository } from './key-maintenance.repository.js';
@@ -39,6 +40,13 @@ export {
   type NewServiceCredential,
   type ServiceCredentialRecord,
 } from './machine-identity.repository.js';
+export {
+  OidcTrustRepository,
+  type NewOidcBinding,
+  type OidcBindingForExchange,
+  type OidcBindingRecord,
+  type OidcPolicyPatch,
+} from './oidc-trust.repository.js';
 export { AuthStateRepository, MAX_STEP_UP_TTL_SECONDS } from './auth-state.repository.js';
 export {
   effectiveInvitationStatus,
@@ -185,6 +193,7 @@ export function createRepositories(db: DbClient) {
     cliAuth: new CliAuthRepository(db),
     invitations: new InvitationRepository(db),
     machineIdentities: new MachineIdentityRepository(db),
+    oidcTrust: new OidcTrustRepository(db),
     memberships: new MembershipRepository(db),
     projects: new ProjectRepository(db),
     projectMembers: new ProjectMemberRepository(db),

@@ -1,0 +1,29 @@
+# Next.js production build. Server side values reach `next build` through its
+# environment only. Only NEXT_PUBLIC_ variables end up in browser bundles: keep
+# secrets out of those names, and list the build's keys explicitly.
+name: build
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@<full-commit-sha>
+      - uses: actions/setup-node@<full-commit-sha>
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Build with EnvVault configuration
+        uses: <owner>/<repo>/packages/github-action@<full-commit-sha>
+        with:
+          api-url: https://api.envvault.example.com
+          project-id: <project-id>
+          environment: staging
+          keys: DATABASE_URL, NEXT_PUBLIC_API_URL, SENTRY_AUTH_TOKEN
+          command: npm run build

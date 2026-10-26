@@ -1,0 +1,29 @@
+# Staging deployment preparation. The job runs in the GitHub `staging`
+# environment, and the trust binding requires that environment, so a workflow
+# elsewhere cannot use the staging identity.
+name: deploy-staging
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency: deploy-staging
+    steps:
+      - uses: actions/checkout@<full-commit-sha>
+      - name: Prepare the deployment with EnvVault configuration
+        uses: <owner>/<repo>/packages/github-action@<full-commit-sha>
+        with:
+          api-url: https://api.envvault.example.com
+          project-id: <project-id>
+          binding-id: <staging-binding-id>
+          environment: staging
+          command: ./scripts/deploy.sh staging
+          command-timeout-minutes: 30

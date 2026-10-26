@@ -60,8 +60,10 @@ model User {
   maintenanceJobsRequested MaintenanceJob[]    @relation("MaintenanceJobRequestedBy")
   idempotencyRecords       IdempotencyRecord[]
 
-  cliDeviceGrants CliDeviceGrant[]
-  cliSessions     CliSession[]
+  cliDeviceGrants      CliDeviceGrant[]
+  cliSessions          CliSession[]
+  oidcPoliciesDisabled OidcTrustPolicy[] @relation("OidcTrustPolicyDisabledBy")
+  oidcPoliciesUpdated  OidcTrustPolicy[] @relation("OidcTrustPolicyUpdatedBy")
 
   @@index([email])
   @@index([lastWorkspaceId])

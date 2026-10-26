@@ -20,6 +20,16 @@ import {
   type MachineToken,
   type MachineTokenInput,
   machineTokenSchema,
+  type CreateOidcTrustBindingInput,
+  type OidcBindingAttemptList,
+  oidcBindingAttemptListSchema,
+  type OidcTokenInput,
+  type OidcTrustBinding,
+  type OidcTrustBindingList,
+  oidcTrustBindingListSchema,
+  type OidcTrustBindingQuery,
+  oidcTrustBindingSchema,
+  type UpdateOidcTrustBindingInput,
   type MachineVariableList,
   machineVariableListSchema,
   type RevokeServiceCredentialInput,
@@ -1494,7 +1504,116 @@ export class EnvVaultClient {
     );
   }
 
+  /* ----------------------------------------------- GitHub trust bindings */
+
+  listOidcTrustBindings(
+    workspaceId: string,
+    projectId: string,
+    query: OidcTrustBindingQuery = {},
+  ): Promise<OidcTrustBindingList> {
+    return this.request(`${bindingPath(workspaceId, projectId)}${toQuery(query)}`, {
+      schema: oidcTrustBindingListSchema,
+    });
+  }
+
+  /** Needs a recent step up, and the binding's access on its environments yourself. */
+  createOidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    input: CreateOidcTrustBindingInput,
+  ): Promise<OidcTrustBinding> {
+    return this.request(bindingPath(workspaceId, projectId), {
+      method: 'POST',
+      body: input,
+      schema: oidcTrustBindingSchema,
+    });
+  }
+
+  oidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+  ): Promise<OidcTrustBinding> {
+    return this.request(bindingPath(workspaceId, projectId, bindingId), {
+      schema: oidcTrustBindingSchema,
+    });
+  }
+
+  /** Needs a recent step up. */
+  updateOidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+    input: UpdateOidcTrustBindingInput,
+  ): Promise<OidcTrustBinding> {
+    return this.request(bindingPath(workspaceId, projectId, bindingId), {
+      method: 'PATCH',
+      body: input,
+      schema: oidcTrustBindingSchema,
+    });
+  }
+
+  disableOidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+  ): Promise<OidcTrustBinding> {
+    return this.request(`${bindingPath(workspaceId, projectId, bindingId)}/disable`, {
+      method: 'POST',
+      schema: oidcTrustBindingSchema,
+    });
+  }
+
+  /** Needs a recent step up. */
+  enableOidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+  ): Promise<OidcTrustBinding> {
+    return this.request(`${bindingPath(workspaceId, projectId, bindingId)}/enable`, {
+      method: 'POST',
+      schema: oidcTrustBindingSchema,
+    });
+  }
+
+  /** Needs a recent step up. The binding is revoked and its tokens stop at once. */
+  async deleteOidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+  ): Promise<void> {
+    await this.request(bindingPath(workspaceId, projectId, bindingId), {
+      method: 'DELETE',
+      schema: noContentSchema,
+    });
+  }
+
+  oidcTrustBindingAttempts(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+  ): Promise<OidcBindingAttemptList> {
+    return this.request(`${bindingPath(workspaceId, projectId, bindingId)}/attempts`, {
+      schema: oidcBindingAttemptListSchema,
+    });
+  }
+
   /* --------------------------------------------- machine side (evv_mt_) */
+
+  /**
+   * Exchanges a GitHub Actions OIDC identity token for a machine access
+   * token. The identity token goes in the Authorization header of this one
+   * request and is accepted once, so this call is never retried
+   * automatically: ask GitHub for a new token to try again.
+   */
+  exchangeOidcToken(identityToken: string, input: OidcTokenInput = {}): Promise<MachineToken> {
+    return this.request('/machine/oidc/token', {
+      method: 'POST',
+      body: input,
+      bearer: identityToken,
+      schema: machineTokenSchema,
+    });
+  }
 
   /**
    * Exchanges a service credential for a machine access token. The
@@ -1846,6 +1965,11 @@ function snapshotPath(
   snapshotId: string,
 ): string {
   return `${environmentPath(workspaceId, projectId, environmentId)}/snapshots/${encodeURIComponent(snapshotId)}`;
+}
+
+function bindingPath(workspaceId: string, projectId: string, bindingId?: string): string {
+  const base = `${projectPath(workspaceId, projectId)}/oidc-trust-bindings`;
+  return bindingId ? `${base}/${encodeURIComponent(bindingId)}` : base;
 }
 
 function machinePath(workspaceId: string, projectId: string, identityId?: string): string {

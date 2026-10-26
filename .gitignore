@@ -35,6 +35,8 @@ node_modules/
 
 # Build output
 dist/
+# A JavaScript action ships its bundle; rebuilt and checked in CI.
+!packages/github-action/dist/
 build/
 out/
 .next/

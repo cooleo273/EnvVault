@@ -174,8 +174,11 @@ never include the credential, tokens or values.
 - After a suspected leak, revoke the credential: running jobs fail on their
   next EnvVault request.
 
-## 7. Not yet available
+## 7. GitHub OIDC (Phase 5A)
 
-- OIDC workload identity federation (exchanging a GitHub Actions OIDC token
-  instead of storing a credential) is planned, not implemented.
-- Pushing values to hosting providers is Phase 5.
+GitHub Actions jobs can authenticate with their OIDC token instead of a stored
+credential: see [integrations/github-actions.md](integrations/github-actions.md)
+and [integrations/github-oidc.md](integrations/github-oidc.md). The credential
+flow above remains for other CI systems and as an explicit fallback.
+
+Pushing values to hosting providers is a later phase.

@@ -207,20 +207,114 @@ describe('access control constraints', () => {
       );
     });
 
-    it('stores no secret for OIDC federation credentials', async () => {
+    it('stores no secret for OIDC federation credentials and requires issuer, audience and expiry', async () => {
       const oidc = {
         workspaceId: t.workspaceId,
         serviceIdentityId: identityId,
         type: 'OIDC_FEDERATION' as const,
         name: 'github actions',
         oidcIssuer: 'https://token.actions.githubusercontent.com',
-        oidcSubject: 'repo:acme/checkout:ref:refs/heads/main',
+        oidcAudience: 'https://api.envvault.example',
+        scopes: ['environment:read', 'secret:runtime'],
+        expiresAt: new Date(Date.now() + 30 * DAY),
       };
       await expect(db.serviceCredential.create({ data: oidc })).resolves.toBeDefined();
+      for (const bad of [
+        { secretHash: tokenHash() },
+        { tokenPrefix: randomBytes(8).toString('hex') },
+        { oidcAudience: null },
+        { expiresAt: null },
+        { scopes: [] },
+      ]) {
+        await expectViolation(
+          db.serviceCredential.create({ data: { ...oidc, ...bad } }),
+          'check',
+          'service_credentials_oidc_chk',
+        );
+      }
+      const created = await db.serviceCredential.create({ data: oidc });
+      await expectTriggerRejection(
+        db.serviceCredential.update({
+          where: { id: created.id },
+          data: { oidcAudience: 'https://other.example' },
+        }),
+        /oidc_audience is immutable/,
+      );
+    });
+
+    it('keeps trust policy conditions within their rules', async () => {
+      const environment = await db.environment.findFirstOrThrow({
+        where: { projectId: t.projectId },
+      });
+      const credential = await db.serviceCredential.create({
+        data: {
+          workspaceId: t.workspaceId,
+          serviceIdentityId: identityId,
+          type: 'OIDC_FEDERATION',
+          name: 'deploy',
+          oidcIssuer: 'https://token.actions.githubusercontent.com',
+          oidcAudience: 'https://api.envvault.example',
+          scopes: ['secret:runtime'],
+          expiresAt: new Date(Date.now() + 30 * DAY),
+        },
+      });
+      const policy = (overrides: Record<string, unknown> = {}) => ({
+        credentialId: credential.id,
+        workspaceId: t.workspaceId,
+        projectId: t.projectId,
+        serviceIdentityId: identityId,
+        repositoryId: '123456',
+        repositoryOwnerId: '777',
+        repositoryName: 'octo-org/app',
+        environmentIds: [environment.id],
+        ...overrides,
+      });
+      for (const [bad, constraint] of [
+        [{ eventNames: ['push', 'pull_request_target'] }, 'oidc_trust_policies_events_chk'],
+        [{ repositoryId: 'octo-org/app' }, 'oidc_trust_policies_repository_chk'],
+        [{ environmentIds: [] }, 'oidc_trust_policies_lists_chk'],
+        [{ workflowPath: '../evil.yml' }, 'oidc_trust_policies_workflow_chk'],
+      ] as const) {
+        await expectViolation(
+          db.oidcTrustPolicy.create({ data: policy(bad) }),
+          'check',
+          constraint,
+        );
+      }
+      await db.oidcTrustPolicy.create({ data: policy() });
+      await expectTriggerRejection(
+        db.oidcTrustPolicy.update({
+          where: { credentialId: credential.id },
+          data: { repositoryId: '999' },
+        }),
+        /repository_id is immutable/,
+      );
+      // A policy cannot point at another project's identity.
+      const other = await db.project.create({
+        data: {
+          workspaceId: t.workspaceId,
+          name: 'Other',
+          slug: `other-${randomBytes(3).toString('hex')}`,
+        },
+      });
+      const otherCredential = await db.serviceCredential.create({
+        data: {
+          workspaceId: t.workspaceId,
+          serviceIdentityId: identityId,
+          type: 'OIDC_FEDERATION',
+          name: 'second',
+          oidcIssuer: 'https://token.actions.githubusercontent.com',
+          oidcAudience: 'https://api.envvault.example',
+          scopes: ['secret:runtime'],
+          expiresAt: new Date(Date.now() + 30 * DAY),
+        },
+      });
       await expectViolation(
-        db.serviceCredential.create({ data: { ...oidc, secretHash: tokenHash() } }),
-        'check',
-        'service_credentials_oidc_chk',
+        db.oidcTrustPolicy.create({
+          data: policy({ credentialId: otherCredential.id, projectId: other.id }),
+        }),
+        'foreign_key',
+        'oidc_trust_policies_identity_fkey',
       );
     });
 

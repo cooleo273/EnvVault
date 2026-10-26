@@ -309,3 +309,92 @@ describe('machine client from the environment', () => {
     await expect(client.environments()).resolves.toHaveLength(1);
   });
 });
+
+describe('machine client with GitHub OIDC', () => {
+  function oidcApi(responses: Response[] = []) {
+    const exchanges: { authorization: string; body: unknown }[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/machine/oidc/token')) {
+        exchanges.push({
+          authorization: new Headers(init?.headers).get('authorization') ?? '',
+          body: JSON.parse(typeof init?.body === 'string' ? init.body : '{}'),
+        });
+        return Promise.resolve(responses.shift() ?? json(200, token(exchanges.length)));
+      }
+      if (url.endsWith('/machine/environments'))
+        return Promise.resolve(json(200, { items: [environment] }));
+      if (url.endsWith('/runtime')) return Promise.resolve(json(200, runtime));
+      return Promise.resolve(new Response(null, { status: 204 }));
+    });
+    return { fetch, exchanges };
+  }
+
+  it('asks for a fresh identity token for every exchange and sends the binding hints', async () => {
+    const api = oidcApi([json(200, token(1, 30_000)), json(200, token(2))]);
+    let issued = 0;
+    const client = new EnvVaultMachineClient({
+      baseUrl: BASE,
+      fetch: api.fetch,
+      oidcToken: () => Promise.resolve(`header.payload-${String(++issued)}.signature`),
+      oidc: { projectId: '0b6f1f54-8a52-4a43-9a4a-1c7a7d4f0c03' },
+      environmentIds: [environment.id],
+    });
+    await client.environments();
+    await client.runtimeValues('staging');
+    expect(api.exchanges.map((e) => e.authorization)).toEqual([
+      'Bearer header.payload-1.signature',
+      'Bearer header.payload-2.signature',
+    ]);
+    expect(api.exchanges[0]?.body).toEqual({
+      projectId: '0b6f1f54-8a52-4a43-9a4a-1c7a7d4f0c03',
+      environmentIds: [environment.id],
+    });
+  });
+
+  it('never repeats an exchange with the same identity token, even with retries on', async () => {
+    const api = oidcApi([
+      json(503, { error: { statusCode: 503, code: 'SERVICE_UNAVAILABLE', message: 'x' } }),
+    ]);
+    const client = new EnvVaultMachineClient({
+      baseUrl: BASE,
+      fetch: api.fetch,
+      retries: 3,
+      oidcToken: () => Promise.resolve('header.payload.signature'),
+    });
+    await expect(client.environments()).rejects.toBeInstanceOf(EnvVaultApiError);
+    expect(api.exchanges).toHaveLength(1);
+    expect(inspect(client)).not.toContain('payload');
+  });
+
+  it('needs exactly one way to authenticate', () => {
+    expect(() => new EnvVaultMachineClient({ baseUrl: BASE })).toThrow(/either/);
+    expect(
+      () =>
+        new EnvVaultMachineClient({
+          baseUrl: BASE,
+          credential: CREDENTIAL,
+          oidcToken: () => Promise.resolve('x.y.z'),
+        }),
+    ).toThrow(/either/);
+  });
+});
+
+describe('trust binding management', () => {
+  it('uses the project scoped binding routes', async () => {
+    const urls: string[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>((input, init) => {
+      urls.push(`${init?.method ?? 'GET'} ${input as string}`);
+      return Promise.resolve(new Response(null, { status: 204 }));
+    });
+    const client = createEnvVaultClient({
+      baseUrl: BASE,
+      fetch,
+      getAccessToken: () => Promise.resolve('person-token'),
+    });
+    await client.deleteOidcTrustBinding('w 1', 'p', 'b/1');
+    expect(urls).toEqual([
+      `DELETE ${BASE}/api/v1/workspaces/w%201/projects/p/oidc-trust-bindings/b%2F1`,
+    ]);
+  });
+});

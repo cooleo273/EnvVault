@@ -191,6 +191,25 @@ export const envSchema = z
     // Machine identities (docs/service-credentials.md): token exchanges per
     // credential, and runtime loads per identity overall and per environment.
     MACHINE_TOKEN_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(30),
+    /** GitHub OIDC exchanges per repository per minute (matrix builds exchange once per job). */
+    OIDC_TOKEN_RATE_LIMIT: z.coerce.number().int().min(1).max(5000).default(120),
+    /** Minimum seconds between JWKS refetches triggered by an unknown key id. */
+    OIDC_JWKS_COOLDOWN_SECONDS: z.coerce.number().int().min(0).max(600).default(30),
+    /**
+     * Comma separated OIDC issuers whose tokens may be exchanged (exact match).
+     * Default: GitHub Actions. Empty turns OIDC exchange off. A GitHub
+     * Enterprise issuer such as https://token.actions.githubusercontent.com/<slug>
+     * must be listed explicitly.
+     */
+    OIDC_TRUSTED_ISSUERS: z
+      .string()
+      .default('https://token.actions.githubusercontent.com')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((issuer) => issuer.trim().replace(/\/+$/, ''))
+          .filter((issuer) => issuer.length > 0),
+      ),
     MACHINE_RUNTIME_RATE_LIMIT: z.coerce.number().int().min(1).max(5000).default(120),
     MACHINE_RUNTIME_RESOURCE_RATE_LIMIT: z.coerce.number().int().min(1).max(5000).default(60),
     /** Total key and value bytes one runtime response may carry. */
@@ -268,6 +287,34 @@ export const envSchema = z
           code: 'custom',
           path: ['ENCRYPTION_LOCAL_KEYRING'],
           message: 'is not allowed in production; mount the keyring as a read only file',
+        });
+      }
+    }
+    for (const issuer of env.OIDC_TRUSTED_ISSUERS) {
+      let url: URL | null;
+      try {
+        url = new URL(issuer);
+      } catch {
+        url = null;
+      }
+      // Plain http only for a loopback test issuer, and only when NODE_ENV=test.
+      const testIssuer =
+        env.NODE_ENV === 'test' && url?.protocol === 'http:' && isLocalHost(issuer);
+      if (!url || (url.protocol !== 'https:' && !testIssuer) || url.search || url.hash) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['OIDC_TRUSTED_ISSUERS'],
+          message: `${issuer} must be an https issuer URL without query or fragment`,
+        });
+      } else if (
+        url.protocol === 'https:' &&
+        isLocalHost(issuer) &&
+        env.NODE_ENV === 'production'
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['OIDC_TRUSTED_ISSUERS'],
+          message: `${issuer} must not be a local issuer in production`,
         });
       }
     }

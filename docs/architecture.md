@@ -1,8 +1,8 @@
 # EnvVault Architecture
 
-> Status: **Phase 4C: public API conventions, TypeScript and Python SDKs** (on top of
-> machine identities in 4B, the CLI in 4A, and the secrets, encryption, projects and
-> authorization layers of Phases 1 to 3). This document describes the architecture as
+> Status: **Phase 5A: GitHub Actions OIDC federation and the EnvVault action** (on top of
+> the public API and SDKs in 4C, machine identities in 4B, the CLI in 4A, and the secrets,
+> encryption, projects and authorization layers of Phases 1 to 3). This document describes the architecture as
 > implemented today and the boundaries that later phases build on. Sections marked
 > _Planned_ describe intended designs that are not implemented yet.
 
@@ -25,21 +25,22 @@ stays possible, but there is no microservice split at this stage.
 
 ## 2. Repository layout
 
-| Path                        | Package                             | Responsibility                                                                              |
-| --------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- |
-| `apps/web`                  | `@envvault/web`                     | Next.js App Router frontend (Server Components by default, Tailwind CSS, shadcn/ui)         |
-| `apps/api`                  | `@envvault/api`                     | NestJS REST API, the system's trust boundary                                                |
-| `apps/cli`                  | `@envvault/cli`                     | `envvault` command line client: sign in, project linking, `run`, `pull`, `doctor`           |
-| `packages/shared`           | `@envvault/shared`                  | Framework-agnostic contracts: Zod schemas, API constants, request-ID rules                  |
-| `packages/sdk`              | `@envvault/sdk`                     | Typed REST client for people, the CLI and machine identities (web server, CLI, examples)    |
-| `packages/sdk-python`       | `envvault` (PyPI name, unpublished) | Python SDK for machine identities: runtime configuration and a process runner               |
-| `examples`                  | `@envvault/example-*`               | Node.js, Next.js, Python and CI examples with placeholder credentials                       |
-| `packages/database`         | `@envvault/database`                | Prisma schema, migrations and client factory (**server-only**)                              |
-| `packages/crypto`           | `@envvault/crypto`                  | Envelope-encryption boundary: KMS provider interface + AES-256-GCM cipher (**server-only**) |
-| `packages/config`           | `@envvault/config`                  | Shared TypeScript, ESLint and Prettier configuration                                        |
-| `infrastructure/docker`     | none                                | Docker Compose for local PostgreSQL and Redis                                               |
-| `infrastructure/deployment` | none                                | Deployment manifests (_planned_)                                                            |
-| `docs`                      | none                                | Architecture and project documentation                                                      |
+| Path                        | Package                                 | Responsibility                                                                              |
+| --------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `apps/web`                  | `@envvault/web`                         | Next.js App Router frontend (Server Components by default, Tailwind CSS, shadcn/ui)         |
+| `apps/api`                  | `@envvault/api`                         | NestJS REST API, the system's trust boundary                                                |
+| `apps/cli`                  | `@envvault/cli`                         | `envvault` command line client: sign in, project linking, `run`, `pull`, `doctor`           |
+| `packages/shared`           | `@envvault/shared`                      | Framework-agnostic contracts: Zod schemas, API constants, request-ID rules                  |
+| `packages/sdk`              | `@envvault/sdk`                         | Typed REST client for people, the CLI and machine identities (web server, CLI, examples)    |
+| `packages/sdk-python`       | `envvault` (PyPI name, unpublished)     | Python SDK for machine identities: runtime configuration and a process runner               |
+| `packages/github-action`    | `@envvault/github-action` (unpublished) | GitHub Action: OIDC exchange, masking, command runner; ships a committed bundle             |
+| `examples`                  | `@envvault/example-*`                   | Node.js, Next.js, Python, CI and GitHub Actions examples with placeholder credentials       |
+| `packages/database`         | `@envvault/database`                    | Prisma schema, migrations and client factory (**server-only**)                              |
+| `packages/crypto`           | `@envvault/crypto`                      | Envelope-encryption boundary: KMS provider interface + AES-256-GCM cipher (**server-only**) |
+| `packages/config`           | `@envvault/config`                      | Shared TypeScript, ESLint and Prettier configuration                                        |
+| `infrastructure/docker`     | none                                    | Docker Compose for local PostgreSQL and Redis                                               |
+| `infrastructure/deployment` | none                                    | Deployment manifests (_planned_)                                                            |
+| `docs`                      | none                                    | Architecture and project documentation                                                      |
 
 ### Package dependency rules
 
@@ -268,6 +269,31 @@ The SDKs are clients of this contract only. All decryption, authorization, rate 
 audit stay in the API; the Python SDK implements no cryptography, and both SDKs retry only
 requests that are safe to repeat.
 
+### 4.10 GitHub Actions OIDC (Phase 5A)
+
+GitHub jobs authenticate without a stored credential:
+
+- **Trust bindings** are `OIDC_FEDERATION` rows in `service_credentials` (issuer, audience,
+  scopes, expiry, revocation) with an `oidc_trust_policies` row of claim conditions (repository
+  and owner ids, workflow, reusable workflow, refs, GitHub environments, events, subject,
+  EnvVault environments). Access tokens keep referencing `service_credentials`, so the Phase 4B
+  token checks, revocation and per request authorization apply unchanged.
+- **Verification** (`OidcVerifier`): exact issuer allowlist, discovery and JWKS from that issuer
+  only, asymmetric algorithms, time and lifetime checks, then claim parsing. Keys are cached per
+  process; failures fail closed.
+- **Exchange** (`OidcExchangeService`, `POST /machine/oidc/token`): replay check in the shared
+  limit store, per repository limit, binding evaluation with the shared `githubMismatch` and
+  `protectedPolicyProblems` rules, then a normal machine access token. Per request, a disabled
+  binding stops its tokens.
+- **Management** (`OidcBindingsService`): project scoped routes with `service_identity`
+  permissions, step up and the creator's own authority on bound environments.
+- **Action** (`packages/github-action`): bundled with esbuild for Node 24; uses the TypeScript SDK's
+  machine client in OIDC mode, masks values with `@actions/core`, and runs the command as a child
+  process with a filtered environment.
+
+Details: [integrations/github-oidc.md](integrations/github-oidc.md),
+[integrations/github-actions.md](integrations/github-actions.md).
+
 ## 5. Web (apps/web)
 
 See **[design-system.md](design-system.md)** for tokens, components and module guidelines.
@@ -417,6 +443,8 @@ See [authentication.md](authentication.md) for the full design.
 | TypeScript SDK contract | Vitest, SDK against the real API and Postgres | `apps/api/test/sdk.int-spec.ts` |
 | Python SDK | pytest with an in process fake API; live tests driven by the API suite | `packages/sdk-python/tests`, `apps/api/test/python-sdk.int-spec.ts` |
 | Examples | Node, Python and CI examples against the real API | `apps/api/test/examples.int-spec.ts` |
+| OIDC federation | Vitest, real API and Postgres, local OIDC issuer with real signed tokens | `apps/api/test/oidc.int-spec.ts` |
+| GitHub Action | Unit tests; the bundled action run as a runner would against the real API | `packages/github-action/src/*.test.ts`, `apps/api/test/github-action.int-spec.ts` |
 
 The API e2e tests build the real `AppModule` and apply the same `configureApp()` as
 production, replacing only the `DatabaseService`, so they need no running database.
@@ -443,6 +471,8 @@ developer's real database.
    package build and `twine check`. The integration job also creates the SDK's virtual
    environment so the Python and example contract tests run.
 
+The `verify` job also fails when `packages/github-action/dist` differs from a fresh build.
+
 ## 11. Key technology decisions
 
 | Decision                                  | Rationale                                                                                               |
@@ -468,7 +498,8 @@ developer's real database.
   machine identities, service credentials and the CLI's machine mode for CI. Phase 4C documents
   the public API, generates its access metadata from the guards, extends the TypeScript SDK,
   adds the Python SDK, examples and the `/developers/api` reference page. Neither SDK is
-  published.
+  published. Phase 5A adds GitHub Actions OIDC trust bindings, the EnvVault action and the
+  project Integrations page; the action is not published.
 - Readiness is evaluated on request; snapshots are manual (no schedules or retention).
 - Protected-environment approvals are modelled (`required_approvals`, change request
   tables) but not enforced; no approval workflow runs yet.

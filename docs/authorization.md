@@ -255,3 +255,28 @@ Machine identities are evaluated by `evaluateMachinePermissions`
 
 Machine tokens are accepted only on `@MachineRoute()` routes and people's tokens are refused
 there; see [machine-identities.md](machine-identities.md).
+
+## 11. Phase 5A: GitHub Actions trust bindings
+
+No new permission keys or roles. A trust binding lets a GitHub workflow
+authenticate as a machine identity, the same power as issuing it a credential,
+so the same rules apply:
+
+| Action                         | Requires                                                                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| List, view, recent attempts    | `service_identity:read` on the project                                                                                                                                    |
+| Create, change, enable, delete | `service_identity:manage`, a recent step up, and the caller's own permissions on every bound environment for what the binding's scopes unlock (`GRANT_EXCEEDS_AUTHORITY`) |
+| Disable                        | `service_identity:manage` (narrows access, no step up)                                                                                                                    |
+
+`integration:manage` is not used: no built in role holds it, and a binding is a
+machine credential rather than a sync integration.
+
+A binding can only name environments the identity already has a grant on, so
+it cannot widen what the identity reaches. A binding that reaches a protected
+environment must restrict events and branches or a GitHub deployment
+environment (`OIDC_PROTECTED_POLICY_REQUIRED`), and the identity still needs a
+direct grant there. Machine tokens issued through a binding are evaluated by
+`evaluateMachinePermissions` like any other, limited to the binding's
+environments; machine tokens cannot call the binding routes
+(`MACHINE_TOKEN_NOT_ALLOWED`). See
+[integrations/github-oidc.md](integrations/github-oidc.md).

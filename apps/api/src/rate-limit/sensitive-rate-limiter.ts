@@ -20,7 +20,8 @@ export type SensitiveAction =
   | 'cli-approve'
   | 'machine-token'
   | 'machine-runtime'
-  | 'credential-issue';
+  | 'credential-issue'
+  | 'oidc-token';
 
 interface Rule {
   limit: number;
@@ -44,6 +45,7 @@ const MESSAGES: Record<SensitiveAction, string> = {
     'Too many runtime loads by this machine identity. Wait a minute and try again.',
   'credential-issue':
     'Too many credentials issued in a short time. Wait a few minutes and try again.',
+  'oidc-token': 'Too many token requests from this repository. Wait a minute and try again.',
 };
 
 export interface ConsumeInput {
@@ -98,7 +100,18 @@ export class SensitiveRateLimiter {
         resourceLimit: env.MACHINE_RUNTIME_RESOURCE_RATE_LIMIT,
       },
       'credential-issue': { limit: 20, windowMs: 5 * minute },
+      'oidc-token': { limit: env.OIDC_TOKEN_RATE_LIMIT, windowMs: minute },
     };
+  }
+
+  /**
+   * True the first time `key` is seen within `ttlMs`, false afterwards. Counted
+   * in the shared store, so it holds across instances only when one is
+   * configured (RATE_LIMIT_STORE=redis); refused (503) when that store is down.
+   */
+  async claimOnce(key: string, ttlMs: number): Promise<boolean> {
+    const record = await this.hit(`once:${key}`, ttlMs, 1, ttlMs);
+    return !record.isBlocked;
   }
 
   async consume(input: ConsumeInput): Promise<void> {

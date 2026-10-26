@@ -287,9 +287,41 @@ Remaining risks:
    15 minutes) or is revoked. There is no request signing or token binding.
 2. A credential stolen from a CI secret store works until it is revoked or expires; EnvVault cannot
    detect use from an unexpected place beyond the activity log.
-3. No OIDC workload identity federation yet, so CI systems must store a credential.
+3. CI systems other than GitHub Actions must store a credential (GitHub OIDC arrived in Phase 5A, section 13).
 4. Without `INTEGRITY_KEY_FILE` (development) credentials stop working at restart; removing an old
    integrity key invalidates every credential it signed.
 5. Expired access token rows are not purged yet.
 6. Next.js was upgraded from 16.4.0 to 16.4.1 for the critical and high advisories of
    2026-10-14 (see section 8).
+
+## 13. Phase 5A: GitHub Actions OIDC
+
+New attack surfaces: a public endpoint accepting identity tokens from an
+external issuer, trust bindings that decide which workflows may act as a
+machine identity, and a JavaScript action that runs inside customers'
+workflows. Threat model: [integrations/ci-security.md](integrations/ci-security.md).
+
+| Risk                                        | Control                                                                                                                                                                                         | Test                                          |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| Forged, altered or unsigned tokens          | `jose` verification against the allowlisted issuer's JWKS; RS256 or ES256 only; issuer, `exp`, `nbf`, `iat`, lifetime and claims checked before use                                             | `oidc.int-spec.ts`                            |
+| Untrusted issuers or key locations          | Exact issuer allowlist (`OIDC_TRUSTED_ISSUERS`); JWKS only from the issuer's discovery document on its own origin; no URL built from token content; http only for loopback with `NODE_ENV=test` | `oidc.int-spec.ts`, `env.ts` validation       |
+| Audience confusion                          | Exactly one `aud`, equal to the binding's audience                                                                                                                                              | `oidc.int-spec.ts`                            |
+| Replay                                      | `jti` accepted once while valid, in the shared limit store; refused when the store is down                                                                                                      | `oidc.int-spec.ts`                            |
+| Fork and pull request access                | `pull_request_target` refused by schema, database and evaluator; `pull_request` only when named; never for protected environments                                                               | `oidc-policy.test.ts`, `oidc.int-spec.ts`     |
+| Workflow substitution, renamed repositories | Numeric repository and owner ids decide; workflow path read only from the token's own repository; reusable workflows by exact ref                                                               | `oidc-policy.test.ts`, `oidc.int-spec.ts`     |
+| Bindings that widen access                  | Only granted environments; creator's own permissions required; step up; strict conditions for protected environments, checked again at every exchange                                           | `oidc.int-spec.ts`                            |
+| Cross workspace and project use             | Composite foreign keys tie bindings to the identity's project; searches scoped by workspace, project or binding; tokens limited to binding environments                                         | `oidc.int-spec.ts`                            |
+| Revocation                                  | Disabling a binding stops issued tokens on the next request; deleting revokes the credential and its tokens                                                                                     | `oidc.int-spec.ts`                            |
+| Values in CI logs and files                 | Action masks every value, each line and its JSON form before the command; no outputs, `GITHUB_ENV` or files; runner credentials removed from the child; dangerous names refused                 | `action.test.ts`, `github-action.int-spec.ts` |
+| Identity provider outage                    | Fail closed with `OIDC_PROVIDER_UNAVAILABLE`                                                                                                                                                    | `oidc.int-spec.ts`                            |
+| Flooding                                    | Per address and per repository limits; refusals audited once per minute per binding and reason                                                                                                  | `oidc.int-spec.ts`                            |
+
+Remaining risks:
+
+1. Not validated against live GitHub in automated tests; follow the manual
+   validation steps in [integrations/github-actions.md](integrations/github-actions.md#10-manual-validation-on-github).
+2. Replay protection holds per instance only without Redis.
+3. A key removed from the issuer's JWKS stays trusted for up to 10 minutes.
+4. Commands run by the action can read and leak the values they receive;
+   masking matches exact strings only.
+5. Docker isolated runner tests were not run in this phase (no Docker daemon).

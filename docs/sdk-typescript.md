@@ -64,6 +64,31 @@ renewed `renewBeforeMs` before expiry, exchanged again once after
 only to `POST /machine/token`. `JSON.stringify` and `util.inspect` of the
 client show no credential or token.
 
+### GitHub Actions OIDC
+
+Instead of a credential, give the machine client a function returning a fresh
+GitHub OIDC token; it is called for every exchange because each identity token
+is accepted once (the EnvVault action does this for you):
+
+```ts
+import * as core from '@actions/core';
+import { EnvVaultMachineClient } from '@envvault/sdk';
+
+const envvault = new EnvVaultMachineClient({
+  baseUrl: 'https://api.envvault.example.com',
+  oidcToken: () => core.getIDToken('https://api.envvault.example.com'),
+  oidc: { projectId },
+});
+```
+
+`exchangeOidcToken(identityToken, input)` on `EnvVaultClient` is the single
+request underneath; it is never retried automatically. Trust bindings are
+managed with `listOidcTrustBindings`, `createOidcTrustBinding`,
+`oidcTrustBinding`, `updateOidcTrustBinding`, `disableOidcTrustBinding`,
+`enableOidcTrustBinding`, `deleteOidcTrustBinding` and
+`oidcTrustBindingAttempts`. See
+[integrations/github-oidc.md](integrations/github-oidc.md).
+
 ## 3. People and the CLI
 
 ```ts

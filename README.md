@@ -4,7 +4,7 @@ A centralized environment variable and secrets management platform for developer
 teams and enterprises: workspaces, projects, unlimited custom environments, and
 encrypted, versioned, audited secrets.
 
-> **Status: Phase 4C (public API conventions, TypeScript and Python SDKs, developer documentation).**
+> **Status: Phase 5A (GitHub Actions OIDC federation and the EnvVault action).**
 > Authentication runs on **Neon Auth**. Workspaces, members and invitations (Phase 1), and
 > projects, custom environments and per environment access (Phase 2), are implemented.
 > Phase 3A added envelope encryption (AES-256-GCM, one data key per secret version); Phase 3B
@@ -14,7 +14,9 @@ encrypted, versioned, audited secrets.
 > backups, retention, shared rate limits, audit seals, idempotency and deployment configuration;
 > Phase 4A adds the `envvault` CLI with browser approved sign in and `envvault run`; Phase 4B adds
 > machine identities with service credentials for CI pipelines and servers; Phase 4C documents
-> the public API, extends the TypeScript SDK, adds a Python SDK, examples and an API reference page.
+> the public API, extends the TypeScript SDK, adds a Python SDK, examples and an API reference page;
+> Phase 5A lets GitHub Actions workflows authenticate with OIDC through trust bindings and adds an
+> EnvVault action that runs a command with the values.
 > **Do not store real secrets in EnvVault yet**: keys are self managed on the API host and the
 > remaining production blockers are listed in
 > [docs/security-hardening.md](docs/security-hardening.md#10-remaining-risks-and-production-blockers).
@@ -56,7 +58,11 @@ code; [docs/api-reference.md](docs/api-reference.md),
 [docs/api-authentication.md](docs/api-authentication.md) and
 [docs/api-versioning.md](docs/api-versioning.md) cover the REST API's conventions, callers and
 compatibility policy; [docs/sdk-typescript.md](docs/sdk-typescript.md) and
-[docs/sdk-python.md](docs/sdk-python.md) cover the SDKs. [docs/roadmap.md](docs/roadmap.md)
+[docs/sdk-python.md](docs/sdk-python.md) cover the SDKs.
+[docs/integrations/github-actions.md](docs/integrations/github-actions.md),
+[docs/integrations/github-oidc.md](docs/integrations/github-oidc.md) and
+[docs/integrations/ci-security.md](docs/integrations/ci-security.md) cover the GitHub Actions
+integration, its OIDC trust model and CI security. [docs/roadmap.md](docs/roadmap.md)
 lists completed and planned phases. The API's OpenAPI document is served
 at `GET /api/v1/openapi.json`, and `/developers/api` in the web app renders it. UI conventions are in
 [docs/design-system.md](docs/design-system.md); open `/design-system` in the running
@@ -73,13 +79,14 @@ packages/
   shared/              Zod schemas and API contracts shared by all apps
   sdk/                 Typed TypeScript client for the REST API
   sdk-python/          Python SDK (machine identities, runtime configuration, runner)
+  github-action/       GitHub Action: OIDC authentication, masking, command runner (bundled)
   database/            Prisma schema, migrations and client (server-only)
   crypto/              Envelope encryption boundary (server-only)
   config/              Shared TypeScript / ESLint / Prettier config
 infrastructure/
   docker/              Docker Compose for PostgreSQL and Redis
   deployment/          Deployment manifests (planned)
-examples/              Node.js, Next.js, Python and CI examples (placeholder credentials)
+examples/              Node.js, Next.js, Python, CI and GitHub Actions examples (placeholders)
 docs/                  Architecture documentation
 ```
 
@@ -154,6 +161,27 @@ envvault run --env qa -- npm run build
 ```
 
 See [docs/ci-authentication.md](docs/ci-authentication.md).
+
+### GitHub Actions
+
+Workflows authenticate with their GitHub OIDC token through a trust binding (Project →
+Integrations → GitHub Actions) and run a command with the values in its environment only:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+steps:
+  - uses: <owner>/<repo>/packages/github-action@<full-commit-sha>
+    with:
+      api-url: https://api.envvault.example.com
+      project-id: <project-id>
+      environment: staging
+      command: npm run build
+```
+
+See [docs/integrations/github-actions.md](docs/integrations/github-actions.md) and
+`examples/github-actions/`.
 
 ### Using the SDKs
 

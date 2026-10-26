@@ -1,0 +1,29 @@
+# Node.js tests with EnvVault values (for example a test database URL).
+# Copy to .github/workflows/ and replace the <placeholders>. Pin every action to
+# a full commit SHA. The binding allows refs/heads/main and push only, so pull
+# requests (including from forks) cannot authenticate.
+name: tests
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write # the job's OIDC token for EnvVault; nothing stored in GitHub
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@<full-commit-sha>
+      - uses: actions/setup-node@<full-commit-sha>
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Test with EnvVault configuration
+        uses: <owner>/<repo>/packages/github-action@<full-commit-sha>
+        with:
+          api-url: https://api.envvault.example.com
+          project-id: <project-id>
+          environment: test
+          command: npm test

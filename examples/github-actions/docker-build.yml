@@ -1,0 +1,28 @@
+# Docker image build. Values go to BuildKit as build secrets (mounted for one
+# RUN instruction, never written into a layer or the image history). Never pass
+# them with --build-arg or ENV: those are stored in the image.
+#
+# In the Dockerfile:
+#   RUN --mount=type=secret,id=npm_token,env=NPM_TOKEN npm ci
+name: image
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@<full-commit-sha>
+      - name: Build the image with EnvVault build secrets
+        uses: <owner>/<repo>/packages/github-action@<full-commit-sha>
+        with:
+          api-url: https://api.envvault.example.com
+          project-id: <project-id>
+          environment: build
+          keys: NPM_TOKEN
+          command: docker build --secret id=npm_token,env=NPM_TOKEN --tag app:${{ github.sha }} .

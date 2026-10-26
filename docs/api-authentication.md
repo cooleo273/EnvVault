@@ -12,12 +12,13 @@ exactly three kinds of authenticated caller and no other API key mechanism.
 
 ## 1. Callers
 
-| Caller           | Token                                            | Lifetime                                            | Stored by EnvVault | Obtained from                       |
-| ---------------- | ------------------------------------------------ | --------------------------------------------------- | ------------------ | ----------------------------------- |
-| Person           | Neon Auth JWT (EdDSA)                            | Minutes, minted per request by the web app's server | Not stored         | Signing in to the web app           |
-| CLI              | `evv_at_` access token (`evv_rt_` refresh token) | 1 hour (refresh 30 days, session at most 90 days)   | SHA-256 hash       | Browser approved device flow        |
-| Machine identity | `evv_mt_` access token                           | At most 15 minutes                                  | SHA-256 hash       | `POST /machine/token`               |
-| Exchange only    | `evv_sk_` service credential                     | 1 to 365 days                                       | HMAC-SHA256 digest | Issued once in the dashboard or API |
+| Caller           | Token                                            | Lifetime                                            | Stored by EnvVault | Obtained from                                       |
+| ---------------- | ------------------------------------------------ | --------------------------------------------------- | ------------------ | --------------------------------------------------- |
+| Person           | Neon Auth JWT (EdDSA)                            | Minutes, minted per request by the web app's server | Not stored         | Signing in to the web app                           |
+| CLI              | `evv_at_` access token (`evv_rt_` refresh token) | 1 hour (refresh 30 days, session at most 90 days)   | SHA-256 hash       | Browser approved device flow                        |
+| Machine identity | `evv_mt_` access token                           | At most 15 minutes                                  | SHA-256 hash       | `POST /machine/token` or `POST /machine/oidc/token` |
+| Exchange only    | `evv_sk_` service credential                     | 1 to 365 days                                       | HMAC-SHA256 digest | Issued once in the dashboard or API                 |
+| Exchange only    | GitHub Actions OIDC token (JWT)                  | Minutes, issued by GitHub per job                   | Not stored         | The job, with `id-token: write`                     |
 
 Every token is sent as `Authorization: Bearer <token>`. Health, readiness,
 `GET /meta`, `GET /openapi.json` and the CLI device start and polling routes
@@ -83,6 +84,14 @@ with `POST /machine/token/revoke`.
 Both SDKs do this for you: they exchange on first use, renew a minute before
 expiry, exchange again once after `TOKEN_EXPIRED`, `TOKEN_REVOKED` or
 `TOKEN_INVALID`, and revoke the last token when the client is closed.
+
+### GitHub Actions OIDC
+
+`POST /machine/oidc/token` takes the job's GitHub OIDC token as the bearer
+and returns the same access token, for the identity of the one trust binding
+whose conditions the token meets. The token is verified against the
+allowlisted issuer's keys and accepted once. See
+[integrations/github-oidc.md](integrations/github-oidc.md).
 
 ## 5. Refusals
 

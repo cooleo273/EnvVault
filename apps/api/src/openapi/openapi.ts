@@ -62,6 +62,8 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   CLI: 'Browser approved CLI sign in and CLI sessions.',
   'Machine identities': 'Machine identities, service credentials and grants, managed by people.',
   Machine: 'Routes for machine identities: token exchange, environments and runtime values.',
+  'GitHub Actions':
+    'Trust bindings that let GitHub Actions workflows authenticate as a machine identity with OIDC.',
 };
 
 const SECURITY_SCHEMES = {
@@ -92,6 +94,13 @@ const SECURITY_SCHEMES = {
     bearerFormat: 'evv_sk_',
     description:
       'Long lived service credential of a machine identity. Accepted only by `POST /machine/token`.',
+  },
+  githubOidc: {
+    type: 'http',
+    scheme: 'bearer',
+    bearerFormat: 'JWT',
+    description:
+      'GitHub Actions OIDC identity token requested by the job (`id-token: write`) for the audience configured on a trust binding. Accepted only by `POST /machine/oidc/token`.',
   },
 };
 
@@ -154,6 +163,7 @@ export function operationIdFor(method: string, path: string): string | undefined
 
 function securityFor(route: RouteDoc, access: RouteAccess | undefined): JsonSchema[] {
   if (route.machine === 'credential') return [{ serviceCredential: [] }];
+  if (route.machine === 'oidc') return [{ githubOidc: [] }];
   const callers = access?.callers ?? (route.public ? ['anonymous'] : ['person']);
   if (callers.includes('anonymous')) return [];
   return callers.flatMap((caller): JsonSchema[] =>
@@ -188,12 +198,17 @@ export function buildOpenApiDocument(
     const callers =
       route.machine === 'credential'
         ? ['service-credential']
-        : (meta?.callers ?? (route.public ? ['anonymous'] : ['person']));
+        : route.machine === 'oidc'
+          ? ['github-oidc']
+          : (meta?.callers ?? (route.public ? ['anonymous'] : ['person']));
     const notes = [
       permission ? `Requires \`${permission}\`.` : null,
       stepUp ? 'Requires a recent password step-up (`POST /auth/step-up`).' : null,
       route.machine === 'credential'
         ? 'Authenticate with a service credential: `Authorization: Bearer evv_sk_…`.'
+        : null,
+      route.machine === 'oidc'
+        ? 'Authenticate with a GitHub Actions OIDC token: `Authorization: Bearer <JWT>`. See docs/integrations/github-oidc.md.'
         : null,
       route.machine === 'token'
         ? 'Machine identities only: `Authorization: Bearer evv_mt_…` from `POST /machine/token`.'
@@ -237,7 +252,7 @@ export function buildOpenApiDocument(
               headers: RESPONSE_HEADERS,
             },
         '400': ERROR_REF,
-        ...(anonymous && route.machine !== 'credential'
+        ...(anonymous && route.machine !== 'credential' && route.machine !== 'oidc'
           ? {}
           : { '401': ERROR_REF, '403': ERROR_REF, '404': ERROR_REF }),
         '429': RATE_LIMITED,

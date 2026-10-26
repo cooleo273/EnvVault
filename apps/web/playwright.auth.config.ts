@@ -64,7 +64,7 @@ export default defineConfig({
       name: 'auth-flows',
       dependencies: ['warmup'],
       testMatch:
-        /(auth-flows|collaboration|secrets|secret-transfers|environment-intelligence|machines|developers)\.spec\.ts/,
+        /(auth-flows|collaboration|secrets|secret-transfers|environment-intelligence|machines|developers|github-actions)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     {

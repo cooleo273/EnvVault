@@ -35,6 +35,7 @@ model ServiceIdentity {
   disabledBy            User?               @relation("ServiceIdentityDisabledBy", fields: [disabledById], references: [id], onDelete: SetNull)
   retiredBy             User?               @relation("ServiceIdentityRetiredBy", fields: [retiredById], references: [id], onDelete: SetNull)
   credentials           ServiceCredential[]
+  oidcTrustPolicies     OidcTrustPolicy[]
   accessPolicies        AccessPolicy[]
   secretsCreated        Secret[]            @relation("SecretCreatedByServiceIdentity")
   secretsUpdated        Secret[]            @relation("SecretUpdatedByServiceIdentity")
@@ -86,11 +87,60 @@ model ServiceCredential {
   rotatedFrom     ServiceCredential?   @relation("ServiceCredentialRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
   replacement     ServiceCredential?   @relation("ServiceCredentialRotation")
   accessTokens    MachineAccessToken[]
+  oidcPolicy      OidcTrustPolicy?
 
   @@unique([workspaceId, serviceIdentityId, id], map: "service_credentials_workspace_identity_id_key")
   @@index([serviceIdentityId])
   @@index([oidcIssuer, oidcSubject])
   @@map("service_credentials")
+}
+
+/// The claim conditions of an `OIDC_FEDERATION` service credential (a trust
+/// binding): which GitHub Actions workflows may authenticate as the identity.
+/// The credential row keeps what never changes (issuer, audience, scopes,
+/// expiry, revocation); this row keeps the conditions, which can be edited.
+/// A binding only makes a workflow eligible to authenticate: what it can
+/// read is still the identity's grants, checked on every request.
+model OidcTrustPolicy {
+  credentialId       String              @id @map("credential_id") @db.Uuid
+  workspaceId        String              @map("workspace_id") @db.Uuid
+  projectId          String              @map("project_id") @db.Uuid
+  serviceIdentityId  String              @map("service_identity_id") @db.Uuid
+  provider           IntegrationProvider @default(GITHUB)
+  /// Stable numeric ids from the `repository_id` and `repository_owner_id` claims.
+  repositoryId       String              @map("repository_id") @db.VarChar(20)
+  repositoryOwnerId  String              @map("repository_owner_id") @db.VarChar(20)
+  /// `owner/name` for display only: names can change, so they never decide trust.
+  repositoryName     String              @map("repository_name") @db.VarChar(200)
+  /// Workflow file path inside the repository (from `workflow_ref`), or any.
+  workflowPath       String?             @map("workflow_path") @db.VarChar(512)
+  /// Exact `job_workflow_ref` of a reusable workflow, or any.
+  jobWorkflowRef     String?             @map("job_workflow_ref") @db.VarChar(1024)
+  /// Allowed `ref` values (a trailing `*` matches a prefix); empty allows any.
+  refs               String[]            @default([]) @db.VarChar(512)
+  /// Allowed GitHub deployment environments (`environment` claim); empty allows any.
+  githubEnvironments String[]            @default([]) @map("github_environments") @db.VarChar(255)
+  /// Allowed `event_name` values; empty allows any except pull requests.
+  eventNames         String[]            @default([]) @map("event_names") @db.VarChar(64)
+  /// Exact `sub` claim, for customised subject templates; optional.
+  subject            String?             @db.VarChar(512)
+  /// EnvVault environments the issued access tokens are limited to.
+  environmentIds     String[]            @map("environment_ids") @db.Uuid
+  disabledAt         DateTime?           @map("disabled_at") @db.Timestamptz(3)
+  disabledById       String?             @map("disabled_by_id") @db.Uuid
+  updatedById        String?             @map("updated_by_id") @db.Uuid
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  credential      ServiceCredential @relation(fields: [workspaceId, serviceIdentityId, credentialId], references: [workspaceId, serviceIdentityId, id], onDelete: Cascade, map: "oidc_trust_policies_credential_fkey")
+  serviceIdentity ServiceIdentity   @relation(fields: [workspaceId, projectId, serviceIdentityId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "oidc_trust_policies_identity_fkey")
+  disabledBy      User?             @relation("OidcTrustPolicyDisabledBy", fields: [disabledById], references: [id], onDelete: SetNull)
+  updatedBy       User?             @relation("OidcTrustPolicyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, serviceIdentityId, credentialId], map: "oidc_trust_policies_credential_key")
+  @@index([repositoryId])
+  @@index([workspaceId, projectId])
+  @@map("oidc_trust_policies")
 }
 
 /// Short lived access token issued by exchanging a service credential.
