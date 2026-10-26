@@ -17,6 +17,12 @@ export interface CreatePrismaClientOptions {
    * node-postgres's 10 seconds.
    */
   idleTimeoutMs?: number;
+  /**
+   * Client side limit per query. The driver stops waiting and frees the
+   * connection; the server may still finish the statement. Unset means no
+   * limit (node-postgres's default).
+   */
+  queryTimeoutMs?: number;
 }
 
 /**
@@ -33,12 +39,14 @@ export function createPrismaClient(options: CreatePrismaClientOptions): PrismaCl
     connectionTimeoutMillis: options.connectionTimeoutMs ?? 5_000,
     idleTimeoutMillis: options.idleTimeoutMs ?? 300_000,
     keepAlive: true,
+    ...(options.queryTimeoutMs === undefined ? {} : { query_timeout: options.queryTimeoutMs }),
     ...(options.maxConnections === undefined ? {} : { max: options.maxConnections }),
   });
   // Prisma's own console logging is disabled: it bypasses the application's
   // structured logger and query logs may contain sensitive parameters. Errors
   // still propagate to callers, which log them through the app logger.
-  return new PrismaClient({ adapter, log: [] });
+  // Minimal errors leave out the call site rendering, which quotes arguments.
+  return new PrismaClient({ adapter, log: [], errorFormat: 'minimal' });
 }
 
 /** The root client or an interactive-transaction client; repositories accept either. */

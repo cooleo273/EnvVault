@@ -18,12 +18,14 @@ export type LocalKeyringConfig =
 export async function loadLocalKeyProvider(
   config: LocalKeyringConfig,
   nodeEnv: string | undefined,
+  options: { acceptSelfManagedProduction?: boolean } = {},
 ): Promise<LocalKeyProvider> {
   let provider: LocalKeyProvider;
   if (config.file !== undefined) {
     const path = config.file;
     provider = new LocalKeyProvider(await readKeyringFile(path), {
       nodeEnv,
+      ...options,
       source: { kind: 'file', path },
       reload: () => readKeyringFile(path),
       persist: (keyring) => writeKeyringFile(path, keyring),
@@ -37,6 +39,7 @@ export async function loadLocalKeyProvider(
     // Rotation needs durable storage; an environment variable cannot be updated in place.
     provider = new LocalKeyProvider(parseKeyringJson(text), {
       nodeEnv,
+      ...options,
       source: { kind: 'environment' },
     });
   }

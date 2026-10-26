@@ -130,6 +130,38 @@ describe('keyring storage and loading', () => {
     );
   });
 
+  it('runs a self managed keyring only in production, from a file, when acknowledged', async () => {
+    const path = join(directory, 'keyring.json');
+    await writeKeyringFile(path, generateKeyring(new Date(), 'self-managed'));
+    await expect(loadLocalKeyProvider({ file: path }, 'development')).rejects.toThrow(
+      'only used in production',
+    );
+    await expect(loadLocalKeyProvider({ file: path }, 'production')).rejects.toThrow(
+      'ENCRYPTION_SELF_MANAGED_ACKNOWLEDGED',
+    );
+    const provider = await loadLocalKeyProvider({ file: path }, 'production', {
+      acceptSelfManagedProduction: true,
+    });
+    expect((await provider.getActiveKeyVersion()).keyVersion).toBe(1);
+    provider.destroy();
+
+    const inline = Buffer.from(
+      serializeKeyring(generateKeyring(new Date(), 'self-managed')),
+    ).toString('base64');
+    await expect(
+      loadLocalKeyProvider({ inline }, 'production', { acceptSelfManagedProduction: true }),
+    ).rejects.toThrow('loaded from a file');
+  });
+
+  it('refuses to rotate when the keyring file was replaced underneath it', async () => {
+    const path = join(directory, 'keyring.json');
+    await writeKeyringFile(path, generateKeyring());
+    const provider = await loadLocalKeyProvider({ file: path }, 'test');
+    await writeKeyringFile(path, generateKeyring());
+    await expect(provider.rotateWrappingKey()).rejects.toThrow('was replaced');
+    provider.destroy();
+  });
+
   it('never leaves temporary files behind', async () => {
     const path = join(directory, 'keyring.json');
     await writeKeyringFile(path, generateKeyring());

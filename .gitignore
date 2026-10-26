@@ -35,6 +35,8 @@ node_modules/
 
 # Build output
 dist/
+# A JavaScript action ships its bundle; rebuilt and checked in CI.
+!packages/github-action/dist/
 build/
 out/
 .next/
@@ -77,3 +79,20 @@ Thumbs.db
 
 # Playwright auth state (contains test session cookies)
 apps/web/e2e-auth/.auth/
+
+# Phase 3E key material and operator files: never commit.
+*keyring*.json
+recovery-key*.json
+*recovery*.key.json
+*keyring-backup*.json
+integrity*.json
+infrastructure/deployment/env/*.env
+
+# Python (packages/sdk-python)
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/

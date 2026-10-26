@@ -3,7 +3,10 @@ import {
   canModifyEnvironment,
   DATA_PLANE_PERMISSIONS,
   evaluateEnvironmentPermissions,
+  evaluateMachinePermissions,
   evaluateProjectAccess,
+  isMachineGrantable,
+  MACHINE_PERMISSIONS,
 } from './access.js';
 
 const OWNER = [
@@ -137,5 +140,65 @@ describe('evaluateEnvironmentPermissions', () => {
         true,
       ),
     ).toBe(true);
+  });
+});
+
+describe('evaluateMachinePermissions', () => {
+  const runtime = ['environment:read', 'secret:list', 'secret:runtime'];
+  const all = ['environment:read', 'secret:list', 'secret:runtime'];
+
+  it('grants nothing without an ALLOW grant', () => {
+    expect(evaluateMachinePermissions({ grants: [], scopes: all })).toEqual(new Set());
+  });
+
+  it('is the intersection of grants and token scopes', () => {
+    const result = evaluateMachinePermissions({
+      grants: [{ effect: 'ALLOW', permissions: runtime }],
+      scopes: ['environment:read'],
+    });
+    expect(result).toEqual(new Set(['environment:read']));
+  });
+
+  it('never yields permissions outside the machine set, whatever the role holds', () => {
+    const result = evaluateMachinePermissions({
+      grants: [
+        {
+          effect: 'ALLOW',
+          permissions: ['secret:read', 'secret:write', 'secret:export', ...runtime],
+        },
+      ],
+      scopes: [...all, 'secret:read', 'secret:export'],
+    });
+    expect(result).toEqual(new Set(runtime));
+    for (const key of result) expect(MACHINE_PERMISSIONS.has(key as never)).toBe(true);
+  });
+
+  it('lets DENY win and ignores expired grants', () => {
+    const now = new Date('2026-10-01T00:00:00Z');
+    const result = evaluateMachinePermissions({
+      now,
+      scopes: all,
+      grants: [
+        { effect: 'ALLOW', permissions: runtime },
+        { effect: 'DENY', permissions: ['secret:runtime'] },
+        { effect: 'ALLOW', permissions: runtime, expiresAt: new Date('2026-09-01T00:00:00Z') },
+      ],
+    });
+    expect(result).toEqual(new Set(['environment:read', 'secret:list']));
+    const expired = evaluateMachinePermissions({
+      now,
+      scopes: all,
+      grants: [
+        { effect: 'ALLOW', permissions: runtime, expiresAt: new Date('2026-09-01T00:00:00Z') },
+      ],
+    });
+    expect(expired).toEqual(new Set());
+  });
+
+  it('accepts only roles made of machine permissions', () => {
+    expect(isMachineGrantable(runtime)).toBe(true);
+    expect(isMachineGrantable(['environment:read'])).toBe(true);
+    expect(isMachineGrantable([...runtime, 'secret:read'])).toBe(false);
+    expect(isMachineGrantable([])).toBe(false);
   });
 });

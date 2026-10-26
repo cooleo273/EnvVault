@@ -59,3 +59,59 @@ export function getConstraintViolation(error: unknown): ConstraintViolation | nu
   }
   return { kind, constraint };
 }
+
+/** Log safe description of a database error. */
+export interface DatabaseErrorSummary {
+  type: string;
+  code?: string;
+  model?: string;
+  sqlState?: string;
+  constraint?: string;
+  column?: string;
+}
+
+const IDENTIFIER = /^[A-Za-z0-9_.]{1,128}$/;
+
+function identifier(value: unknown): string | undefined {
+  return typeof value === 'string' && IDENTIFIER.test(value) ? value : undefined;
+}
+
+/**
+ * Describes a Prisma or driver error without its message. Prisma messages can
+ * quote query arguments (ciphertext, wrapped keys, names, emails) and
+ * PostgreSQL details can quote row values, so only codes and identifiers
+ * survive. Returns null for errors that are not database errors.
+ */
+export function summarizeDatabaseError(error: unknown): DatabaseErrorSummary | null {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    const cause = driverCause(error) as (DriverAdapterCause & { column?: unknown }) | undefined;
+    const meta = error.meta as { modelName?: unknown } | undefined;
+    const summary: DatabaseErrorSummary = { type: error.name, code: error.code };
+    const model = identifier(meta?.modelName);
+    const sqlState = identifier(cause?.originalCode);
+    const constraint = getConstraintViolation(error)?.constraint;
+    const column = identifier(cause?.column);
+    if (model) summary.model = model;
+    if (sqlState) summary.sqlState = sqlState;
+    if (constraint && IDENTIFIER.test(constraint)) summary.constraint = constraint;
+    if (column) summary.column = column;
+    return summary;
+  }
+  if (error instanceof Prisma.PrismaClientInitializationError) {
+    return {
+      type: error.name,
+      ...(identifier(error.errorCode) ? { code: error.errorCode } : {}),
+    };
+  }
+  if (
+    error instanceof Prisma.PrismaClientValidationError ||
+    error instanceof Prisma.PrismaClientUnknownRequestError ||
+    error instanceof Prisma.PrismaClientRustPanicError
+  ) {
+    return { type: error.name };
+  }
+  if (error instanceof Error && error.name === 'DriverAdapterError') {
+    return { type: error.name };
+  }
+  return null;
+}

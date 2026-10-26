@@ -22,6 +22,9 @@ export {
 export {
   generateKeyring,
   KEYRING_FORMAT,
+  KEYRING_USAGES,
+  keyringMetadata,
+  type KeyringUsage,
   KEYRING_FORMAT_VERSION,
   LOCAL_PROVIDER_ID,
   parseKeyring,
@@ -32,7 +35,34 @@ export {
   type Keyring,
   type KeyringVersion,
 } from './local/keyring.js';
-export { readKeyringFile, writeKeyringFile, keyringFileExists } from './local/keyring-file.js';
+export {
+  keyringFileExists,
+  readKeyringFile,
+  readProtectedFile,
+  writeKeyringFile,
+  writeProtectedFile,
+} from './local/keyring-file.js';
+export {
+  backupUsableVersions,
+  createKeyringBackup,
+  destroyRecoveryKey,
+  generateRecoveryKey,
+  KEYRING_BACKUP_FORMAT,
+  openKeyringBackup,
+  parseKeyringBackup,
+  parseKeyringBackupJson,
+  parseRecoveryKeyJson,
+  readKeyringBackupFile,
+  readRecoveryKeyFile,
+  RECOVERY_KEY_FORMAT,
+  serializeKeyringBackup,
+  serializeRecoveryKey,
+  writeKeyringBackupFile,
+  writeRecoveryKeyFile,
+  type KeyringBackup,
+  type KeyringBackupHeader,
+  type RecoveryKey,
+} from './local/keyring-backup.js';
 export {
   LOCAL_WRAPPED_KEY_BYTES,
   LocalKeyProvider,
@@ -40,3 +70,16 @@ export {
   type LocalKeyringSource,
 } from './local/local-provider.js';
 export { loadLocalKeyProvider, type LocalKeyringConfig } from './local/load.js';
+export {
+  generateIntegrityKeyFile,
+  INTEGRITY_KEY_FORMAT,
+  IntegrityKeys,
+  MAC_BYTES,
+  parseIntegrityKeyFile,
+  readIntegrityKeyFile,
+  rotateIntegrityKeyFile,
+  serializeIntegrityKeyFile,
+  writeIntegrityKeyFile,
+  type IntegrityKeyFile,
+  type IntegrityPurpose,
+} from './integrity-key.js';

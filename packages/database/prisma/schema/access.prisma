@@ -1,48 +1,74 @@
-/// Machine identity (CI/CD pipeline, service, CLI automation) owned by exactly
-/// one workspace and optionally confined to one project.
+/// Machine identity (CI/CD pipeline, deployment server, background job) owned
+/// by one workspace and confined to one project. It is not a user: it holds
+/// no membership and inherits nothing from whoever created it. Its access is
+/// exactly its environment grants (`access_policies`), narrowed by the scopes
+/// of the credential that authenticated.
 model ServiceIdentity {
-  id          String                @id @default(uuid(7)) @db.Uuid
-  workspaceId String                @map("workspace_id") @db.Uuid
-  projectId   String?               @map("project_id") @db.Uuid
+  id                        String                @id @default(uuid(7)) @db.Uuid
+  workspaceId               String                @map("workspace_id") @db.Uuid
+  projectId                 String                @map("project_id") @db.Uuid
   /// Unique per workspace among live identities (case-insensitive).
-  name        String                @db.VarChar(100)
-  description String?               @db.VarChar(1000)
-  status      ServiceIdentityStatus @default(ACTIVE)
-  createdById String?               @map("created_by_id") @db.Uuid
-  lastUsedAt  DateTime?             @map("last_used_at") @db.Timestamptz(3)
-  createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
-  /// Soft delete: identities are referenced by secret history.
-  deletedAt   DateTime?             @map("deleted_at") @db.Timestamptz(3)
+  name                      String                @db.VarChar(100)
+  description               String?               @db.VarChar(1000)
+  status                    ServiceIdentityStatus @default(ACTIVE)
+  /// Optional end of the identity; afterwards none of its credentials work.
+  expiresAt                 DateTime?             @map("expires_at") @db.Timestamptz(3)
+  /// Longest lifetime a new credential of this identity may have.
+  credentialMaxLifetimeDays Int                   @default(90) @map("credential_max_lifetime_days")
+  createdById               String?               @map("created_by_id") @db.Uuid
+  /// Last successful credential exchange.
+  lastAuthenticatedAt       DateTime?             @map("last_authenticated_at") @db.Timestamptz(3)
+  /// Last request made with one of its access tokens.
+  lastUsedAt                DateTime?             @map("last_used_at") @db.Timestamptz(3)
+  disabledAt                DateTime?             @map("disabled_at") @db.Timestamptz(3)
+  disabledById              String?               @map("disabled_by_id") @db.Uuid
+  disabledReason            String?               @map("disabled_reason") @db.VarChar(500)
+  createdAt                 DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Retirement (soft delete): identities are referenced by secret history and audit.
+  deletedAt                 DateTime?             @map("deleted_at") @db.Timestamptz(3)
+  retiredById               String?               @map("retired_by_id") @db.Uuid
 
   workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project               Project?            @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "service_identities_project_fkey")
+  project               Project             @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "service_identities_project_fkey")
   createdBy             User?               @relation("ServiceIdentityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  disabledBy            User?               @relation("ServiceIdentityDisabledBy", fields: [disabledById], references: [id], onDelete: SetNull)
+  retiredBy             User?               @relation("ServiceIdentityRetiredBy", fields: [retiredById], references: [id], onDelete: SetNull)
   credentials           ServiceCredential[]
+  oidcTrustPolicies     OidcTrustPolicy[]
   accessPolicies        AccessPolicy[]
   secretsCreated        Secret[]            @relation("SecretCreatedByServiceIdentity")
   secretsUpdated        Secret[]            @relation("SecretUpdatedByServiceIdentity")
   secretVersionsCreated SecretVersion[]     @relation("SecretVersionCreatedByServiceIdentity")
 
   @@unique([workspaceId, id])
+  @@unique([workspaceId, projectId, id], map: "service_identities_workspace_project_id_key")
   @@index([projectId])
   @@map("service_identities")
 }
 
 /// Credential for a service identity. Scoped to a single workspace through its
 /// identity: there is no cross-tenant or global privileged token. API tokens
-/// are stored as hashes only and must expire.
+/// are stored as keyed digests only (HMAC-SHA256 under the integrity key) and
+/// must expire. A credential authenticates only the token exchange; requests
+/// use the short lived access tokens it is exchanged for.
 model ServiceCredential {
   id                String         @id @default(uuid(7)) @db.Uuid
   workspaceId       String         @map("workspace_id") @db.Uuid
   serviceIdentityId String         @map("service_identity_id") @db.Uuid
   type              CredentialType
   name              String         @db.VarChar(100)
-  /// Public, non-secret token prefix used to look up the credential.
+  /// Public lookup part of the token (not secret).
   tokenPrefix       String?        @unique @map("token_prefix") @db.VarChar(32)
-  /// Hash of the full token (the token is shown once and never stored).
+  /// Keyed digest of the token's secret part (the token is shown once and never stored).
   secretHash        Bytes?         @map("secret_hash")
   hashAlgorithm     String?        @map("hash_algorithm") @db.VarChar(32)
+  /// Integrity key that produced `secretHash`.
+  digestKeyId       String?        @map("digest_key_id") @db.VarChar(64)
+  /// What access tokens exchanged from this credential may do (subset of the machine permissions).
+  scopes            String[]       @default([]) @db.VarChar(64)
+  /// The credential this one replaced; unique, so one credential is rotated at most once.
+  rotatedFromId     String?        @unique @map("rotated_from_id") @db.Uuid
   oidcIssuer        String?        @map("oidc_issuer") @db.VarChar(2048)
   oidcSubject       String?        @map("oidc_subject") @db.VarChar(512)
   oidcAudience      String?        @map("oidc_audience") @db.VarChar(512)
@@ -55,13 +81,91 @@ model ServiceCredential {
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  serviceIdentity ServiceIdentity @relation(fields: [workspaceId, serviceIdentityId], references: [workspaceId, id], onDelete: Cascade, map: "service_credentials_service_identity_fkey")
-  revokedBy       User?           @relation("ServiceCredentialRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
-  createdBy       User?           @relation("ServiceCredentialCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  serviceIdentity ServiceIdentity      @relation(fields: [workspaceId, serviceIdentityId], references: [workspaceId, id], onDelete: Cascade, map: "service_credentials_service_identity_fkey")
+  revokedBy       User?                @relation("ServiceCredentialRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  createdBy       User?                @relation("ServiceCredentialCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  rotatedFrom     ServiceCredential?   @relation("ServiceCredentialRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
+  replacement     ServiceCredential?   @relation("ServiceCredentialRotation")
+  accessTokens    MachineAccessToken[]
+  oidcPolicy      OidcTrustPolicy?
 
+  @@unique([workspaceId, serviceIdentityId, id], map: "service_credentials_workspace_identity_id_key")
   @@index([serviceIdentityId])
   @@index([oidcIssuer, oidcSubject])
   @@map("service_credentials")
+}
+
+/// The claim conditions of an `OIDC_FEDERATION` service credential (a trust
+/// binding): which GitHub Actions workflows may authenticate as the identity.
+/// The credential row keeps what never changes (issuer, audience, scopes,
+/// expiry, revocation); this row keeps the conditions, which can be edited.
+/// A binding only makes a workflow eligible to authenticate: what it can
+/// read is still the identity's grants, checked on every request.
+model OidcTrustPolicy {
+  credentialId       String              @id @map("credential_id") @db.Uuid
+  workspaceId        String              @map("workspace_id") @db.Uuid
+  projectId          String              @map("project_id") @db.Uuid
+  serviceIdentityId  String              @map("service_identity_id") @db.Uuid
+  provider           IntegrationProvider @default(GITHUB)
+  /// Stable numeric ids from the `repository_id` and `repository_owner_id` claims.
+  repositoryId       String              @map("repository_id") @db.VarChar(20)
+  repositoryOwnerId  String              @map("repository_owner_id") @db.VarChar(20)
+  /// `owner/name` for display only: names can change, so they never decide trust.
+  repositoryName     String              @map("repository_name") @db.VarChar(200)
+  /// Workflow file path inside the repository (from `workflow_ref`), or any.
+  workflowPath       String?             @map("workflow_path") @db.VarChar(512)
+  /// Exact `job_workflow_ref` of a reusable workflow, or any.
+  jobWorkflowRef     String?             @map("job_workflow_ref") @db.VarChar(1024)
+  /// Allowed `ref` values (a trailing `*` matches a prefix); empty allows any.
+  refs               String[]            @default([]) @db.VarChar(512)
+  /// Allowed GitHub deployment environments (`environment` claim); empty allows any.
+  githubEnvironments String[]            @default([]) @map("github_environments") @db.VarChar(255)
+  /// Allowed `event_name` values; empty allows any except pull requests.
+  eventNames         String[]            @default([]) @map("event_names") @db.VarChar(64)
+  /// Exact `sub` claim, for customised subject templates; optional.
+  subject            String?             @db.VarChar(512)
+  /// EnvVault environments the issued access tokens are limited to.
+  environmentIds     String[]            @map("environment_ids") @db.Uuid
+  disabledAt         DateTime?           @map("disabled_at") @db.Timestamptz(3)
+  disabledById       String?             @map("disabled_by_id") @db.Uuid
+  updatedById        String?             @map("updated_by_id") @db.Uuid
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  credential      ServiceCredential @relation(fields: [workspaceId, serviceIdentityId, credentialId], references: [workspaceId, serviceIdentityId, id], onDelete: Cascade, map: "oidc_trust_policies_credential_fkey")
+  serviceIdentity ServiceIdentity   @relation(fields: [workspaceId, projectId, serviceIdentityId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "oidc_trust_policies_identity_fkey")
+  disabledBy      User?             @relation("OidcTrustPolicyDisabledBy", fields: [disabledById], references: [id], onDelete: SetNull)
+  updatedBy       User?             @relation("OidcTrustPolicyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, serviceIdentityId, credentialId], map: "oidc_trust_policies_credential_key")
+  @@index([repositoryId])
+  @@index([workspaceId, projectId])
+  @@map("oidc_trust_policies")
+}
+
+/// Short lived access token issued by exchanging a service credential.
+/// Only its SHA-256 hash is stored. Every request checks the token, its
+/// credential and its identity, so revocation applies to the next request.
+model MachineAccessToken {
+  id                String    @id @default(uuid(7)) @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  serviceIdentityId String    @map("service_identity_id") @db.Uuid
+  credentialId      String    @map("credential_id") @db.Uuid
+  tokenHash         Bytes     @unique @map("token_hash")
+  /// Subset of the credential's scopes requested at exchange.
+  scopes            String[]  @db.VarChar(64)
+  /// Optional restriction to some environments of the identity's project.
+  environmentIds    String[]  @default([]) @map("environment_ids") @db.Uuid
+  requestedIp       String?   @map("requested_ip") @db.Inet
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  credential ServiceCredential @relation(fields: [workspaceId, serviceIdentityId, credentialId], references: [workspaceId, serviceIdentityId, id], onDelete: Cascade, map: "machine_access_tokens_credential_fkey")
+
+  @@index([credentialId])
+  @@index([expiresAt])
+  @@map("machine_access_tokens")
 }
 
 /// Environment-scoped grant of an ENVIRONMENT role to exactly one subject
@@ -84,7 +188,8 @@ model AccessPolicy {
 
   environment         Environment          @relation(fields: [workspaceId, projectId, environmentId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "access_policies_environment_fkey")
   workspaceMembership WorkspaceMembership? @relation(fields: [workspaceId, workspaceMembershipId], references: [workspaceId, id], onDelete: Cascade, map: "access_policies_member_fkey")
-  serviceIdentity     ServiceIdentity?     @relation(fields: [workspaceId, serviceIdentityId], references: [workspaceId, id], onDelete: Cascade, map: "access_policies_service_identity_fkey")
+  /// Includes the project, so an identity can only be granted environments of its own project.
+  serviceIdentity     ServiceIdentity?     @relation(fields: [workspaceId, projectId, serviceIdentityId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "access_policies_service_identity_fkey")
   role                Role                 @relation(fields: [workspaceId, roleId], references: [workspaceId, id], onDelete: NoAction, map: "access_policies_role_fkey")
   createdBy           User?                @relation("AccessPolicyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 

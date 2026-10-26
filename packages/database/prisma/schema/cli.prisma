@@ -1,0 +1,51 @@
+/// A pending or decided CLI sign in request (device authorization).
+model CliDeviceGrant {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  /// SHA-256 of the device code held by the CLI.
+  deviceCodeHash Bytes     @unique @map("device_code_hash")
+  userCode       String    @map("user_code") @db.VarChar(9)
+  status         String    @default("pending") @db.VarChar(16)
+  clientVersion  String    @map("client_version") @db.VarChar(32)
+  hostname       String    @db.VarChar(255)
+  platform       String    @db.VarChar(32)
+  requestedIp    String?   @map("requested_ip") @db.Inet
+  userId         String?   @map("user_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  lastPolledAt   DateTime? @map("last_polled_at") @db.Timestamptz(3)
+
+  user     User?        @relation(fields: [userId], references: [id], onDelete: Cascade, map: "cli_device_grants_user_fkey")
+  sessions CliSession[]
+
+  @@index([expiresAt])
+  @@map("cli_device_grants")
+}
+
+/// EnvVault issued credentials of one signed in CLI. Only token hashes are stored.
+model CliSession {
+  id                       String    @id @default(uuid(7)) @db.Uuid
+  userId                   String    @map("user_id") @db.Uuid
+  deviceGrantId            String?   @map("device_grant_id") @db.Uuid
+  clientVersion            String    @map("client_version") @db.VarChar(32)
+  hostname                 String    @db.VarChar(255)
+  platform                 String    @db.VarChar(32)
+  accessTokenHash          Bytes     @unique @map("access_token_hash")
+  accessExpiresAt          DateTime  @map("access_expires_at") @db.Timestamptz(3)
+  refreshTokenHash         Bytes     @unique @map("refresh_token_hash")
+  /// The refresh token before the last rotation; presenting it again means it was copied.
+  previousRefreshTokenHash Bytes?    @map("previous_refresh_token_hash")
+  refreshExpiresAt         DateTime  @map("refresh_expires_at") @db.Timestamptz(3)
+  expiresAt                DateTime  @map("expires_at") @db.Timestamptz(3)
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt               DateTime? @map("last_used_at") @db.Timestamptz(3)
+  revokedAt                DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revokedReason            String?   @map("revoked_reason") @db.VarChar(32)
+
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade, map: "cli_sessions_user_fkey")
+  deviceGrant CliDeviceGrant? @relation(fields: [deviceGrantId], references: [id], onDelete: SetNull, map: "cli_sessions_device_grant_fkey")
+
+  @@index([previousRefreshTokenHash])
+  @@index([userId, createdAt], map: "cli_sessions_user_id_idx")
+  @@map("cli_sessions")
+}

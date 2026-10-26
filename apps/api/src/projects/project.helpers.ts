@@ -83,6 +83,7 @@ export function toEnvironmentDetail(
   return {
     ...toEnvironmentSummary(record),
     expectedKeys: record.expectedKeys,
+    baseEnvironmentId: record.baseEnvironmentId,
     permissions: [...permissions].sort(),
     createdBy: record.createdBy,
   };

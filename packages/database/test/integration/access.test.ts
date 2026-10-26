@@ -97,7 +97,7 @@ describe('access control constraints', () => {
       'access_policies_one_subject_chk',
     );
     const identity = await db.serviceIdentity.create({
-      data: { workspaceId: t.workspaceId, name: 'ci' },
+      data: { workspaceId: t.workspaceId, projectId: t.projectId, name: 'ci' },
     });
     await expectViolation(
       db.accessPolicy.create({
@@ -166,9 +166,11 @@ describe('access control constraints', () => {
       serviceIdentityId: identityId,
       type: 'API_TOKEN' as const,
       name: 'deploy token',
-      tokenPrefix: `evt_${randomBytes(6).toString('hex')}`,
+      tokenPrefix: randomBytes(8).toString('hex'),
       secretHash: tokenHash(),
-      hashAlgorithm: 'sha256',
+      hashAlgorithm: 'hmac-sha256',
+      digestKeyId: 'ik-0123456789abcdef',
+      scopes: ['environment:read', 'secret:runtime'],
       expiresAt: new Date(Date.now() + 30 * DAY),
       ...overrides,
     });
@@ -205,20 +207,114 @@ describe('access control constraints', () => {
       );
     });
 
-    it('stores no secret for OIDC federation credentials', async () => {
+    it('stores no secret for OIDC federation credentials and requires issuer, audience and expiry', async () => {
       const oidc = {
         workspaceId: t.workspaceId,
         serviceIdentityId: identityId,
         type: 'OIDC_FEDERATION' as const,
         name: 'github actions',
         oidcIssuer: 'https://token.actions.githubusercontent.com',
-        oidcSubject: 'repo:acme/checkout:ref:refs/heads/main',
+        oidcAudience: 'https://api.envvault.example',
+        scopes: ['environment:read', 'secret:runtime'],
+        expiresAt: new Date(Date.now() + 30 * DAY),
       };
       await expect(db.serviceCredential.create({ data: oidc })).resolves.toBeDefined();
+      for (const bad of [
+        { secretHash: tokenHash() },
+        { tokenPrefix: randomBytes(8).toString('hex') },
+        { oidcAudience: null },
+        { expiresAt: null },
+        { scopes: [] },
+      ]) {
+        await expectViolation(
+          db.serviceCredential.create({ data: { ...oidc, ...bad } }),
+          'check',
+          'service_credentials_oidc_chk',
+        );
+      }
+      const created = await db.serviceCredential.create({ data: oidc });
+      await expectTriggerRejection(
+        db.serviceCredential.update({
+          where: { id: created.id },
+          data: { oidcAudience: 'https://other.example' },
+        }),
+        /oidc_audience is immutable/,
+      );
+    });
+
+    it('keeps trust policy conditions within their rules', async () => {
+      const environment = await db.environment.findFirstOrThrow({
+        where: { projectId: t.projectId },
+      });
+      const credential = await db.serviceCredential.create({
+        data: {
+          workspaceId: t.workspaceId,
+          serviceIdentityId: identityId,
+          type: 'OIDC_FEDERATION',
+          name: 'deploy',
+          oidcIssuer: 'https://token.actions.githubusercontent.com',
+          oidcAudience: 'https://api.envvault.example',
+          scopes: ['secret:runtime'],
+          expiresAt: new Date(Date.now() + 30 * DAY),
+        },
+      });
+      const policy = (overrides: Record<string, unknown> = {}) => ({
+        credentialId: credential.id,
+        workspaceId: t.workspaceId,
+        projectId: t.projectId,
+        serviceIdentityId: identityId,
+        repositoryId: '123456',
+        repositoryOwnerId: '777',
+        repositoryName: 'octo-org/app',
+        environmentIds: [environment.id],
+        ...overrides,
+      });
+      for (const [bad, constraint] of [
+        [{ eventNames: ['push', 'pull_request_target'] }, 'oidc_trust_policies_events_chk'],
+        [{ repositoryId: 'octo-org/app' }, 'oidc_trust_policies_repository_chk'],
+        [{ environmentIds: [] }, 'oidc_trust_policies_lists_chk'],
+        [{ workflowPath: '../evil.yml' }, 'oidc_trust_policies_workflow_chk'],
+      ] as const) {
+        await expectViolation(
+          db.oidcTrustPolicy.create({ data: policy(bad) }),
+          'check',
+          constraint,
+        );
+      }
+      await db.oidcTrustPolicy.create({ data: policy() });
+      await expectTriggerRejection(
+        db.oidcTrustPolicy.update({
+          where: { credentialId: credential.id },
+          data: { repositoryId: '999' },
+        }),
+        /repository_id is immutable/,
+      );
+      // A policy cannot point at another project's identity.
+      const other = await db.project.create({
+        data: {
+          workspaceId: t.workspaceId,
+          name: 'Other',
+          slug: `other-${randomBytes(3).toString('hex')}`,
+        },
+      });
+      const otherCredential = await db.serviceCredential.create({
+        data: {
+          workspaceId: t.workspaceId,
+          serviceIdentityId: identityId,
+          type: 'OIDC_FEDERATION',
+          name: 'second',
+          oidcIssuer: 'https://token.actions.githubusercontent.com',
+          oidcAudience: 'https://api.envvault.example',
+          scopes: ['secret:runtime'],
+          expiresAt: new Date(Date.now() + 30 * DAY),
+        },
+      });
       await expectViolation(
-        db.serviceCredential.create({ data: { ...oidc, secretHash: tokenHash() } }),
-        'check',
-        'service_credentials_oidc_chk',
+        db.oidcTrustPolicy.create({
+          data: policy({ credentialId: otherCredential.id, projectId: other.id }),
+        }),
+        'foreign_key',
+        'oidc_trust_policies_identity_fkey',
       );
     });
 
@@ -244,6 +340,105 @@ describe('access control constraints', () => {
           data: { secretHash: tokenHash() },
         }),
         /secret_hash is immutable/,
+      );
+    });
+
+    it('confines scopes to machine permissions and requires a keyed digest', async () => {
+      await expectViolation(
+        db.serviceCredential.create({ data: apiToken({ scopes: ['secret:read'] }) }),
+        'check',
+        'service_credentials_scopes_chk',
+      );
+      await expectViolation(
+        db.serviceCredential.create({ data: apiToken({ scopes: [] }) }),
+        'check',
+        'service_credentials_scopes_chk',
+      );
+      await expectViolation(
+        db.serviceCredential.create({ data: apiToken({ hashAlgorithm: 'sha256' }) }),
+        'check',
+        'service_credentials_digest_chk',
+      );
+      await expectViolation(
+        db.serviceCredential.create({ data: apiToken({ digestKeyId: null }) }),
+        'check',
+        'service_credentials_digest_chk',
+      );
+    });
+
+    it('rotates a credential at most once and keeps scopes immutable', async () => {
+      const first = await db.serviceCredential.create({ data: apiToken() });
+      await db.serviceCredential.create({ data: apiToken({ rotatedFromId: first.id }) });
+      await expectViolation(
+        db.serviceCredential.create({ data: apiToken({ rotatedFromId: first.id }) }),
+        'unique',
+      );
+      await expectTriggerRejection(
+        db.serviceCredential.update({
+          where: { id: first.id },
+          data: { scopes: ['environment:read', 'secret:list', 'secret:runtime'] },
+        }),
+        /scopes is immutable/,
+      );
+    });
+
+    it('stores access tokens as 32 byte hashes bound to their credential', async () => {
+      const credential = await db.serviceCredential.create({ data: apiToken() });
+      const token = {
+        workspaceId: t.workspaceId,
+        serviceIdentityId: identityId,
+        credentialId: credential.id,
+        tokenHash: tokenHash(),
+        scopes: ['secret:runtime'],
+        expiresAt: new Date(Date.now() + 60_000),
+      };
+      await expect(db.machineAccessToken.create({ data: token })).resolves.toBeDefined();
+      await expectViolation(
+        db.machineAccessToken.create({ data: { ...token, tokenHash: new Uint8Array(8) } }),
+        'check',
+        'machine_access_tokens_hash_chk',
+      );
+      await expectViolation(
+        db.machineAccessToken.create({
+          data: { ...token, tokenHash: tokenHash(), scopes: ['secret:export'] },
+        }),
+        'check',
+        'machine_access_tokens_scopes_chk',
+      );
+      const other = await db.serviceIdentity.create({
+        data: { workspaceId: t.workspaceId, projectId: t.projectId, name: 'other' },
+      });
+      await expectViolation(
+        db.machineAccessToken.create({
+          data: { ...token, tokenHash: tokenHash(), serviceIdentityId: other.id },
+        }),
+        'foreign_key',
+        'machine_access_tokens_credential_fkey',
+      );
+    });
+
+    it('grants an identity only environments of its own project', async () => {
+      const second = await db.project.create({
+        data: { workspaceId: t.workspaceId, name: 'Second', slug: 'second' },
+      });
+      const environment = await db.environment.create({
+        data: { workspaceId: t.workspaceId, projectId: second.id, name: 'QA', slug: 'qa' },
+      });
+      const role = await db.role.findFirstOrThrow({
+        where: { workspaceId: t.workspaceId, key: 'environment-viewer' },
+      });
+      await expectViolation(
+        db.accessPolicy.create({
+          data: {
+            workspaceId: t.workspaceId,
+            projectId: second.id,
+            environmentId: environment.id,
+            serviceIdentityId: identityId,
+            roleId: role.id,
+          },
+        }),
+        'foreign_key',
+        'access_policies_service_identity_fkey',
       );
     });
 

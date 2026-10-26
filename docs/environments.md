@@ -100,7 +100,23 @@ Audit actions: `environment.created`, `.duplicated`, `.updated` (with
 | `…/projects/{p}/environments`                  | EnvironmentList: search, type and status filters, reorder, create dialog                              |
 | `…/projects/{p}/environments/new[?template=…]` | EnvironmentForm with the template prefilled                                                           |
 | `…/projects/{p}/environments/{e}`              | Variables table ([secrets.md](secrets.md)), EnvironmentSelector, details and the caller's permissions |
-| `…/projects/{p}/environments/{e}/settings`     | Metadata, protection, access grants and lifecycle                                                     |
+| `…/projects/{p}/environments/{e}/settings`     | Metadata, inheritance, validation rules, protection, access grants and lifecycle                      |
+| `…/projects/{p}/environments/{e}/readiness`    | Readiness report ([configuration-validation.md](configuration-validation.md))                         |
+| `…/projects/{p}/environments/{e}/snapshots`    | Snapshots, drift and restore ([configuration-snapshots.md](configuration-snapshots.md))               |
+| `…/projects/{p}/compare`                       | Compare two environments ([environment-comparison.md](environment-comparison.md))                     |
 
-The variables area states plainly: "No variables have been configured yet". Secrets
-management arrives in the next phase, and no data is mocked.
+Variables are covered in [secrets.md](secrets.md).
+
+## 8. Environment intelligence (Phase 3D)
+
+1. **Comparison**: names and metadata of two environments side by side; values are compared on
+   the server only on request and never shown. See
+   [environment-comparison.md](environment-comparison.md).
+2. **Inheritance**: one base environment (`baseEnvironmentId`), one level, only variables marked
+   inheritable and never `SECRET` ones, no protected base, local variables override. See
+   [configuration-inheritance.md](configuration-inheritance.md).
+3. **Validation and readiness**: per environment rules and a READY, WARNING, BLOCKED or UNKNOWN
+   report. See [configuration-validation.md](configuration-validation.md).
+4. **Snapshots**: immutable records of names, metadata and version references, with drift
+   reports and a previewed, atomic restore. See
+   [configuration-snapshots.md](configuration-snapshots.md).

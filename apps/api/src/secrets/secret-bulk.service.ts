@@ -17,6 +17,7 @@ import {
   SecretAuthorizationService,
   type SecretRequestContext,
 } from './secret-authorization.service.js';
+import { SecretRateLimiter } from './secret-rate-limiter.js';
 import { conflict, notFound, SecretVault, STALE } from './secret-vault.service.js';
 
 type BulkInput = z.output<typeof bulkActionInputSchema>;
@@ -41,6 +42,7 @@ export class SecretBulkService {
     private readonly database: DatabaseService,
     private readonly vault: SecretVault,
     private readonly authorization: SecretAuthorizationService,
+    private readonly limiter: SecretRateLimiter,
     @Inject(APP_ENV) private readonly env: Env,
   ) {}
 
@@ -68,6 +70,7 @@ export class SecretBulkService {
       input.action === 'update' ? 'secret:write' : 'secret:delete',
       action,
     );
+    await this.limiter.consume(ctx, 'bulk-write');
     if (input.items.length > this.env.SECRET_BULK_MAX_ITEMS) {
       throw new ApiException(
         HttpStatus.BAD_REQUEST,
@@ -111,6 +114,12 @@ export class SecretBulkService {
         this.database.client,
         async (tx) => {
           const repos = createRepositories(tx);
+          await this.authorization.recheck(
+            ctx,
+            repos,
+            [input.action === 'update' ? 'secret:write' : 'secret:delete'],
+            action,
+          );
           const user = ctx.principal.userId;
           const changed =
             input.action === 'delete'

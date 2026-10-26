@@ -35,8 +35,11 @@ export const PERMISSIONS = {
   'secret:delete': 'Delete secrets',
   'secret:rollback': 'Restore a previous secret version',
   'secret:export': 'Export decrypted values in bulk (download as a file)',
-  'service_identity:read': 'View machine identities',
-  'service_identity:manage': 'Create, disable and delete machine identities and their credentials',
+  'secret:runtime': 'Load decrypted values into a local process (envvault run); never a file',
+  'service_identity:read':
+    'View machine identities, their credentials (never the tokens) and grants',
+  'service_identity:manage':
+    'Create, disable and retire machine identities, and issue, rotate and revoke their credentials',
   'access_policy:manage': 'Grant and revoke environment-scoped access',
   'change_request:create': 'Propose changes to protected environments',
   'change_request:review': 'Approve or reject change requests',
@@ -70,6 +73,7 @@ export const SENSITIVE_PERMISSIONS: ReadonlySet<PermissionKey> = new Set<Permiss
   'secret:delete',
   'secret:rollback',
   'secret:export',
+  'secret:runtime',
   'service_identity:manage',
   'access_policy:manage',
   'change_request:apply',

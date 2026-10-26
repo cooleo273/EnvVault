@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "envvault"
+version = "0.1.0"
+description = "Python SDK for the EnvVault API: load authorized configuration with machine identities."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "LicenseRef-Proprietary"
+authors = [{ name = "EnvVault" }]
+keywords = ["envvault", "secrets", "configuration", "environment variables"]
+classifiers = [
+  # Blocks accidental uploads: PyPI rejects this classifier. Remove it at release (docs/sdk-python.md).
+  "Private :: Do Not Upload",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
+  "Intended Audience :: Developers",
+  "Topic :: Security",
+]
+dependencies = ["httpx>=0.27,<0.29"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.1.1",
+  "ruff==0.17.0",
+  "mypy==2.4.0",
+  "build==1.6.1",
+  "twine==7.0.0",
+]
+
+[project.scripts]
+envvault-py = "envvault.__main__:main"
+
+[project.urls]
+Documentation = "https://github.com/cooleo273/EnvVault/blob/main/docs/sdk-python.md"
+Source = "https://github.com/cooleo273/EnvVault/tree/main/packages/sdk-python"
+Changelog = "https://github.com/cooleo273/EnvVault/blob/main/packages/sdk-python/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/envvault"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/envvault", "tests", "README.md", "CHANGELOG.md", "pyproject.toml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "PT", "ASYNC"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and the runner start processes on purpose, never through a shell.
+"tests/**" = ["S603", "S607", "S105", "S106"]
+"src/envvault/runner.py" = ["S603"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs a running EnvVault API (see tests/integration)"]
+addopts = "-q"

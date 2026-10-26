@@ -38,6 +38,7 @@ import {
   CurrentWorkspace,
   RequireEnvironmentPermission,
   RequireProjectPermission,
+  AllowCliToken,
 } from '../auth/auth.decorators.js';
 import type {
   AuthenticatedRequest,
@@ -72,6 +73,7 @@ export class EnvironmentsController {
 
   /** Environments the caller may see (effective `environment:read`), in display order. */
   @Get()
+  @AllowCliToken()
   @RequireProjectPermission('project:read')
   @AllowArchived('workspace', 'project')
   async list(
@@ -193,6 +195,7 @@ export class EnvironmentsController {
   }
 
   @Get(':environmentId')
+  @AllowCliToken()
   @RequireEnvironmentPermission('environment:read')
   @AllowArchived('workspace', 'project', 'environment')
   async get(@CurrentEnvironment() environment: AuthorizedEnvironment): Promise<EnvironmentDetail> {

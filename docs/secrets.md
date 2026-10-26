@@ -233,6 +233,24 @@ up to twice the byte limit; every other route keeps the 100 kB limit.
   count and every exported secret id, or `secret.export_failed`). If the success event cannot
   be written, no content is returned.
 
+### Runtime loading (`envvault run`)
+
+`POST …/environments/{environmentId}/runtime` (body `{ "includeInherited": true }`) returns
+the decrypted current values so the CLI can start a process with them in its environment
+([cli.md](cli.md)). It is not an export: nothing is formatted as a file, and the CLI never
+writes the result to disk.
+
+- Needs **`secret:runtime`** ([authorization.md, section 9](authorization.md#9-phase-4a-changes-cli)).
+  `secret:export` does not grant it. Protected environments need a direct grant and a recent
+  step up.
+- Returns `values` (`key`, `value`, `source` local or inherited), `missingRequired` (required
+  keys without a value, from `isRequired` and required validation rules) and
+  `withheldInherited` (inherited values left out because the caller may not load the base).
+- At most 2000 values and `RUNTIME_MAX_BYTES` (default 1 MiB) of response; a larger
+  environment answers `413 RUNTIME_TOO_LARGE` rather than a partial set.
+- Sent with `no-store`. Audited as `secret.runtime_loaded` (count and secret ids) before the
+  values are returned; if the event cannot be written nothing is returned.
+
 ## 7. History and rollback
 
 **History** (`GET /{id}/versions`) lists versions newest first with keyset pagination
@@ -314,20 +332,37 @@ permissions are then checked per operation by `SecretAuthorizationService`, whic
 
 ## 10. Rate limits
 
-Per user limits on reading plaintext, per minute, configurable:
+Per user limits, configurable, checked after authorization (a 429 never tells someone without
+access whether a variable exists):
 
-| Variable                            | Default | Counts                                                      |
-| ----------------------------------- | ------: | ----------------------------------------------------------- |
-| `SECRET_REVEAL_RATE_LIMIT`          |      60 | Reveals, historical reveals and comparisons of any variable |
-| `SECRET_REVEAL_RESOURCE_RATE_LIMIT` |      20 | The same, for one variable                                  |
-| `SECRET_BULK_READ_RATE_LIMIT`       |      10 | Exports and value comparing import previews                 |
+| Variable                             |       Default | Counts                                                      |
+| ------------------------------------ | ------------: | ----------------------------------------------------------- |
+| `SECRET_REVEAL_RATE_LIMIT`           | 60 per minute | Reveals, historical reveals and comparisons of any variable |
+| `SECRET_REVEAL_RESOURCE_RATE_LIMIT`  | 20 per minute | The same, for one variable                                  |
+| `SECRET_BULK_READ_RATE_LIMIT`        | 10 per minute | Exports and value comparing import previews                 |
+| `SECRET_IMPORT_RATE_LIMIT`           | 10 per minute | Import commits                                              |
+| `SECRET_BULK_WRITE_RATE_LIMIT`       | 20 per minute | Bulk updates, deletes and restores                          |
+| `SECRET_ROLLBACK_RATE_LIMIT`         | 30 per minute | Rollbacks                                                   |
+| `SECRET_RUNTIME_RATE_LIMIT`          | 30 per minute | Runtime loads (`envvault run`) across environments          |
+| `SECRET_RUNTIME_RESOURCE_RATE_LIMIT` | 20 per minute | Runtime loads of one environment                            |
 
-Refused attempts count too. Exceeding a limit blocks that counter for a minute (429 with
-`Retry-After`) and records one `secret.access_denied` event with `reason: rate_limited` per
-block. These limits are keyed by user, because the IP based throttler sees only the web
-server's address. **The counters live in the throttler's in memory storage**: each API
-instance counts separately, so with N replicas a user can make up to N times the limit until
-a shared store (Redis) is configured for the throttler.
+Exceeding a limit blocks that counter until its window ends (429 with `Retry-After`) and
+records one `secret.access_denied` event with `reason: rate_limited` per block. Counters are
+shared between API instances when `RATE_LIMIT_STORE=redis`; if Redis is unreachable these
+actions are refused (503 `RATE_LIMIT_UNAVAILABLE`) rather than counted per instance. Other
+limits are in [security-hardening.md, section 5](security-hardening.md#5-controls-added-or-verified).
+
+**Retries.** Create, update, delete, restore, rollback, import commit and bulk routes accept
+`Idempotency-Key`; the web server sends one with every such call and retries once with the
+same key after a network failure, so a change is never applied twice.
+
+**Access checked again before writing.** Import commits, bulk changes and rollbacks evaluate
+the caller's permissions again inside the write transaction; a revocation in the meantime
+stops the change (403, audited with `reason: access_changed`).
+
+**Retention.** Deleted variables and old versions can be purged by a workspace retention
+policy ([operational-runbook.md, section 6](operational-runbook.md#6-retention)). Versions a
+snapshot or a later rollback still needs, and current versions, are never purged.
 
 ## 11. Audit events
 
@@ -335,18 +370,24 @@ Written to `audit_events` with the actor, the workspace, project and environment
 resource and the request id. Metadata holds names, version numbers, counts, ids and error
 categories, never values, file contents or request bodies.
 
-| Action                                                                                          | Outcome          | Notes                                                                           |
-| ----------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------- |
-| `secret.created`, `secret.updated`, `secret.value_changed`, `secret.deleted`, `secret.restored` | SUCCESS          | In the transaction of the change                                                |
-| `secret.revealed`, `secret.version_revealed`, `secret.versions_compared`                        | SUCCESS          | Written before the value or answer is returned; if it fails nothing is returned |
-| `secret.rolled_back`                                                                            | SUCCESS          | In the transaction; restored, previous and new version                          |
-| `secret.import_previewed`                                                                       | SUCCESS          | Counts per status, whether values were compared                                 |
-| `secret.import_started`, `secret.import_completed`, `secret.import_failed`                      | SUCCESS, FAILURE | Completed is in the transaction, with every created or updated id               |
-| `secret.export_requested`, `secret.exported`, `secret.export_failed`                            | SUCCESS, FAILURE | Format, count and every exported id                                             |
-| `secret.bulk_deleted`, `secret.bulk_restored`, `secret.bulk_updated`                            | SUCCESS          | In the transaction, with every id and the changed fields                        |
-| `secret.batch_items`                                                                            | as above         | Continuation of a batch event: ids beyond the first 250, same `batchId`         |
-| `secret.access_denied`                                                                          | DENIED           | Permission, step up or rate limit refusals                                      |
-| `secret.encryption_failed`, `secret.decryption_failed`                                          | FAILURE          | Crypto error code only                                                          |
+| Action                                                                                          | Outcome          | Notes                                                                                                  |
+| ----------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------ |
+| `secret.created`, `secret.updated`, `secret.value_changed`, `secret.deleted`, `secret.restored` | SUCCESS          | In the transaction of the change                                                                       |
+| `secret.revealed`, `secret.version_revealed`, `secret.versions_compared`                        | SUCCESS          | Written before the value or answer is returned; if it fails nothing is returned                        |
+| `secret.rolled_back`                                                                            | SUCCESS          | In the transaction; restored, previous and new version                                                 |
+| `secret.import_previewed`                                                                       | SUCCESS          | Counts per status, whether values were compared                                                        |
+| `secret.import_started`, `secret.import_completed`, `secret.import_failed`                      | SUCCESS, FAILURE | Completed is in the transaction, with every created or updated id                                      |
+| `secret.export_requested`, `secret.exported`, `secret.export_failed`                            | SUCCESS, FAILURE | Format, count and every exported id                                                                    |
+| `secret.runtime_loaded`                                                                         | SUCCESS          | `envvault run`: count, ids and whether inherited values were included; before values are returned      |
+| `secret.bulk_deleted`, `secret.bulk_restored`, `secret.bulk_updated`                            | SUCCESS          | In the transaction, with every id and the changed fields                                               |
+| `secret.batch_items`                                                                            | as above         | Continuation of a batch event: ids beyond the first 250, same `batchId`                                |
+| `secret.access_denied`                                                                          | DENIED           | Permission, step up or rate limit refusals                                                             |
+| `secret.encryption_failed`, `secret.decryption_failed`                                          | FAILURE          | Crypto error code only                                                                                 |
+| `authz.denied`, `security.rate_limited`                                                         | DENIED           | Refusals at the request guard and rate limited sensitive actions, once per minute                      |
+| `encryption.*`, `retention.*`                                                                   | SUCCESS, FAILURE | Operator and background events (rotation, rewrap, backups, purges); actor `SYSTEM` for background work |
+
+Every event is sealed into its workspace's MAC chain shortly after it is written
+([security-hardening.md, section 7](security-hardening.md#7-audit-integrity)).
 
 Audit metadata is limited to 16 KB per event, so batch events carry at most 250 ids each and
 continue in `secret.batch_items` events. Because mutation events share the transaction, a
@@ -365,7 +406,11 @@ breadcrumbs, name, protection status and environment switcher; the page shows th
 - **Reveal:** the value stays in the row's state for 30 seconds and is cleared when hidden,
   when the tab is hidden and when the row unmounts. In protected environments the first reveal
   asks for the password. Copy is available only while a value is revealed.
-- **Add and edit dialog:** as in Phase 3B, plus the change note stored with a new value.
+- **Add and edit dialog:** as in Phase 3B, plus the change note stored with a new value and
+  the **Inheritable** switch (disabled for `SECRET`, see
+  [configuration-inheritance.md](configuration-inheritance.md)).
+- **Inherited variables** (environments with a base): listed below the table with their source
+  and an Override action; local variables that override one carry an **Overrides** badge.
 - **Import wizard:** paste or choose a file (shown masked by default), review entries with
   statuses and per entry Create, Overwrite or Skip, then a progress state and a summary.
   Cancel at any point before importing leaves everything unchanged.
@@ -405,10 +450,13 @@ Manual check, synthetic values only:
 8. Check **Activity** and `audit_events` for the events in section 11, and that
    `secret_versions` holds only ciphertext.
 
-**Still owed on Neon Develop** (blocked on credentials; nothing was run against Neon):
+**Neon Develop status.** `20261021090000_secrets_crud` and
+`20261022090000_secret_version_history` were applied to the Develop branch with approval, and
+the catalog was synced. Still owed there, each only after explicit approval:
 
-- Review and apply `20261021090000_secrets_crud` and `20261022090000_secret_version_history`
-  with `pnpm db:migrate:deploy` (`DIRECT_URL` pointing at Develop), then `pnpm db:sync-catalog`.
+- `20261023090000_environment_intelligence` (Phase 3D) and
+  `20261024090000_security_hardening` (Phase 3E), in that order, with `pnpm db:migrate:deploy`.
+  Neither adds permissions, so no catalog sync is needed.
 - Run `pnpm db:check-drift` and the integration suites against a Develop branch copy.
 - Measure the import of 500 variables and a 1000 variable export over Neon's latency (the
   transactions allow 60 seconds and use one statement per batch).

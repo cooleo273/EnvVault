@@ -32,6 +32,7 @@ import {
   notFound,
   protectionRequired,
 } from '../projects/project.helpers.js';
+import { LimitSensitiveAction } from '../rate-limit/sensitive-action.guard.js';
 
 /**
  * Environment-scoped access grants (ALLOW or DENY of an environment role, with
@@ -84,6 +85,7 @@ export class EnvironmentAccessController {
   }
 
   @Post()
+  @LimitSensitiveAction('access-change')
   @RequireEnvironmentPermission('access_policy:manage')
   async grant(
     @CurrentPrincipal() principal: Principal,
@@ -170,6 +172,7 @@ export class EnvironmentAccessController {
   }
 
   @Delete(':grantId')
+  @LimitSensitiveAction('access-change')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequireEnvironmentPermission('access_policy:manage')
   @AllowArchived('environment')

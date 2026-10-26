@@ -5,7 +5,12 @@ import {
   type SetActiveWorkspaceInput,
   setActiveWorkspaceInputSchema,
 } from '@envvault/shared';
-import { AllowUnverifiedEmail, Authenticated, CurrentPrincipal } from '../auth/auth.decorators.js';
+import {
+  AllowUnverifiedEmail,
+  Authenticated,
+  CurrentPrincipal,
+  AllowCliToken,
+} from '../auth/auth.decorators.js';
 import type { Principal } from '../auth/principal.js';
 import { ApiException } from '../common/api-exception.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
@@ -24,6 +29,7 @@ export class UsersController {
    * null (onboarding).
    */
   @Get()
+  @AllowCliToken()
   @Authenticated()
   @AllowUnverifiedEmail()
   async me(@CurrentPrincipal() principal: Principal): Promise<MeResponse> {

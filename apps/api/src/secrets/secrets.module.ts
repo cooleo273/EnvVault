@@ -25,5 +25,7 @@ import { SecretsService } from './secrets.service.js';
     SecretExportService,
     SecretBulkService,
   ],
+  // The environment intelligence features use the same crypto, authorization and limits.
+  exports: [SecretVault, SecretAuthorizationService, SecretRateLimiter],
 })
 export class SecretsModule {}

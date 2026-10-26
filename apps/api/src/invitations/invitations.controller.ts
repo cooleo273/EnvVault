@@ -32,6 +32,7 @@ import { DatabaseService } from '../database/database.service.js';
 import { toWorkspaceInvitation } from '../workspaces/workspace.dto.js';
 import { hashInvitationToken } from './invitation-token.js';
 import { InvitationsService } from './invitations.service.js';
+import { LimitSensitiveAction } from '../rate-limit/sensitive-action.guard.js';
 
 function invalidInvitation(): ApiException {
   // One answer for unknown, used, revoked, declined and expired invitations.
@@ -71,6 +72,7 @@ export class WorkspaceInvitationsController {
   }
 
   @Post()
+  @LimitSensitiveAction('access-change')
   @RequireWorkspacePermission('member:invite')
   @SensitiveRateLimit()
   invite(
@@ -90,6 +92,7 @@ export class WorkspaceInvitationsController {
 
   /** Issues a fresh link (new token, new expiry); the previous link stops working. */
   @Post(':invitationId/resend')
+  @LimitSensitiveAction('access-change')
   @RequireWorkspacePermission('member:invite')
   @SensitiveRateLimit()
   async resend(
@@ -114,6 +117,7 @@ export class WorkspaceInvitationsController {
   }
 
   @Delete(':invitationId')
+  @LimitSensitiveAction('access-change')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequireWorkspacePermission('member:invite')
   async revoke(

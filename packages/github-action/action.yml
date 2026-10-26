@@ -1,0 +1,79 @@
+name: EnvVault run
+description: Run a command with an EnvVault environment's values, authenticated with GitHub OIDC.
+author: EnvVault
+branding:
+  icon: lock
+  color: gray-dark
+
+inputs:
+  api-url:
+    description: EnvVault API origin, for example https://api.envvault.example.com (https only).
+    required: true
+  environment:
+    description: Environment name, slug or id to load.
+    required: true
+  command:
+    description: >-
+      Command to run with the values in its environment. Split into arguments
+      without a shell unless `shell` is set.
+    required: true
+  shell:
+    description: none (default), bash, sh, pwsh or cmd. A shell interprets the command text.
+    required: false
+    default: none
+  auth-mode:
+    description: >-
+      oidc (default, the job's GitHub OIDC token; needs `id-token: write`) or
+      service-credential (a long lived credential from a GitHub secret).
+    required: false
+    default: oidc
+  service-credential:
+    description: Only with auth-mode service-credential. Pass it from a secret, never inline.
+    required: false
+  audience:
+    description: OIDC audience; must equal the trust binding's audience. Default the api-url.
+    required: false
+  workspace-id:
+    description: Limit the trust binding search to this workspace.
+    required: false
+  project-id:
+    description: Limit the trust binding search to this project (recommended).
+    required: false
+  binding-id:
+    description: Use this trust binding when several accept the workflow.
+    required: false
+  keys:
+    description: Only pass these variables (comma or newline separated). Default all.
+    required: false
+  allow-reserved-keys:
+    description: Reserved names (such as PYTHONPATH) EnvVault may set. GITHUB_* and similar never.
+    required: false
+  override:
+    description: EnvVault values replace variables the step already has (true, default) or not.
+    required: false
+    default: 'true'
+  include-inherited:
+    description: Include values inherited from the base environment.
+    required: false
+    default: 'true'
+  allow-missing:
+    description: Run even when required variables have no value.
+    required: false
+    default: 'false'
+  working-directory:
+    description: Directory to run the command in. Default the workspace.
+    required: false
+  command-timeout-minutes:
+    description: Stop the command after this many minutes (0, the default, means no limit).
+    required: false
+    default: '0'
+
+outputs:
+  variables-loaded:
+    description: How many variables were passed to the command (never their values).
+  exit-code:
+    description: The command's exit status.
+
+runs:
+  using: node24
+  main: dist/index.mjs

@@ -1,4 +1,92 @@
+import { paginate, paginateBefore, paginateCursor } from './pagination.js';
 import {
+  type CreateMachineGrantInput,
+  type CreateMachineIdentityInput,
+  type CreateServiceCredentialInput,
+  type DisableMachineIdentityInput,
+  type IssuedServiceCredential,
+  issuedServiceCredentialSchema,
+  type MachineActivityPage,
+  machineActivityPageSchema,
+  type MachineEnvironment,
+  machineEnvironmentSchema,
+  type MachineIdentityList,
+  machineIdentityListSchema,
+  type MachineIdentityQuery,
+  type MachineIdentitySummary,
+  machineIdentitySummarySchema,
+  type MachineSelf,
+  machineSelfSchema,
+  type MachineToken,
+  type MachineTokenInput,
+  machineTokenSchema,
+  type CreateOidcTrustBindingInput,
+  type OidcBindingAttemptList,
+  oidcBindingAttemptListSchema,
+  type OidcTokenInput,
+  type OidcTrustBinding,
+  type OidcTrustBindingList,
+  oidcTrustBindingListSchema,
+  type OidcTrustBindingQuery,
+  oidcTrustBindingSchema,
+  type UpdateOidcTrustBindingInput,
+  type MachineVariableList,
+  machineVariableListSchema,
+  type RevokeServiceCredentialInput,
+  type RotateServiceCredentialInput,
+  type ServiceCredential,
+  serviceCredentialListSchema,
+  serviceCredentialSchema,
+  type UpdateMachineIdentityInput,
+  type CompareEnvironmentsInput,
+  API_PROTOCOL_VERSION,
+  type CliDeviceRequest,
+  cliDeviceRequestSchema,
+  type CliDeviceStart,
+  type CliDeviceStartInput,
+  cliDeviceStartSchema,
+  type CliSession,
+  cliSessionListSchema,
+  type CliToken,
+  cliTokenSchema,
+  type CreateSnapshotInput,
+  type MetaResponse,
+  metaResponseSchema,
+  type RuntimeConfiguration,
+  type RuntimeConfigurationInput,
+  runtimeConfigurationSchema,
+  type MaintenanceJob,
+  maintenanceJobSchema,
+  type RetentionPolicy,
+  type RetentionPolicyInput,
+  retentionPolicySchema,
+  type RetentionPreview,
+  retentionPreviewSchema,
+  type EffectiveConfiguration,
+  effectiveConfigurationSchema,
+  type EnvironmentComparison,
+  environmentComparisonSchema,
+  type ReadinessInput,
+  type ReadinessReport,
+  readinessReportSchema,
+  type ReplaceValidationRulesInput,
+  type RestorePreview,
+  type RestorePreviewInput,
+  restorePreviewSchema,
+  type RestoreResult,
+  restoreResultSchema,
+  type RestoreSnapshotInput,
+  type SnapshotDetail,
+  snapshotDetailSchema,
+  type SnapshotDiff,
+  type SnapshotDiffInput,
+  snapshotDiffSchema,
+  type SnapshotPage,
+  snapshotPageSchema,
+  type SnapshotSummary,
+  snapshotSummarySchema,
+  type ValidationRule,
+  validationRuleSchema,
   type CreatedSecret,
   createdSecretSchema,
   type CreateSecretInput,
@@ -71,6 +159,7 @@ import {
   acceptedInvitationSchema,
   API_BASE_PATH,
   apiErrorResponseSchema,
+  REQUEST_ID_HEADER,
   type CreateInvitationInput,
   type CreateWorkspaceInput,
   healthResponseSchema,
@@ -99,7 +188,13 @@ import {
   workspaceSummarySchema,
 } from '@envvault/shared';
 import { z } from 'zod';
-import { EnvVaultApiError, EnvVaultResponseValidationError } from './errors.js';
+import {
+  EnvVaultAbortError,
+  EnvVaultApiError,
+  EnvVaultIncompatibleApiError,
+  EnvVaultNetworkError,
+  EnvVaultResponseValidationError,
+} from './errors.js';
 
 export interface EnvVaultClientOptions {
   /** API origin, e.g. `https://api.envvault.example`. The versioned base path is appended automatically. */
@@ -113,6 +208,24 @@ export interface EnvVaultClientOptions {
   fetch?: typeof fetch;
   /** Request timeout in milliseconds. */
   timeoutMs?: number;
+  /**
+   * Retries after a network failure or a 502, 503 or 504, with backoff. Only
+   * for requests that are safe to repeat: reads, and mutations sent with an
+   * idempotency key. Default 0.
+   */
+  retries?: number;
+  /** Sent as User-Agent where the runtime allows it (Node does). */
+  userAgent?: string;
+  /**
+   * Retries after a 429 by waiting `Retry-After`, for requests that are safe
+   * to repeat (as above). Default 0: rate limits surface as
+   * EnvVaultApiError with `retryAfterSeconds`.
+   */
+  rateLimitRetries?: number;
+  /** Longest `Retry-After` to wait for; longer ones are surfaced instead. Default 30000. */
+  maxRetryAfterMs?: number;
+  /** Cancels every request of this client (see also `withSignal`). */
+  signal?: AbortSignal;
 }
 
 interface RequestOptions<T> {
@@ -120,6 +233,8 @@ interface RequestOptions<T> {
   schema?: z.ZodType<T>;
   body?: unknown;
   authenticated?: boolean;
+  /** Sent instead of the client's access token (the service credential at the exchange). */
+  bearer?: string;
   acceptedErrorStatuses?: number[];
 }
 
@@ -130,8 +245,12 @@ export class EnvVaultClient {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private readonly getAccessToken: (() => Promise<string | null>) | undefined;
+  private readonly options: EnvVaultClientOptions;
+  private idempotencyKey: string | undefined;
+  private signal: AbortSignal | undefined;
 
   constructor(options: EnvVaultClientOptions) {
+    this.options = options;
     const url = new URL(options.baseUrl);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') {
       throw new Error('baseUrl must use http or https');
@@ -140,6 +259,32 @@ export class EnvVaultClient {
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.timeoutMs = options.timeoutMs ?? 10_000;
     this.getAccessToken = options.getAccessToken;
+    this.signal = options.signal;
+  }
+
+  private scoped(change: { idempotencyKey?: string; signal?: AbortSignal }): EnvVaultClient {
+    const scoped = new EnvVaultClient(this.options);
+    scoped.idempotencyKey = change.idempotencyKey ?? this.idempotencyKey;
+    scoped.signal = change.signal ?? this.signal;
+    return scoped;
+  }
+
+  /**
+   * A client that sends `Idempotency-Key: key` with its mutations, so a
+   * retried request (network error, double submit) is answered from the first
+   * one instead of running twice. Use a fresh key per user action.
+   */
+  withIdempotencyKey(key: string): EnvVaultClient {
+    return this.scoped({ idempotencyKey: key });
+  }
+
+  /**
+   * A client whose requests stop when `signal` aborts (EnvVaultAbortError).
+   * A mutation already received by the server may still complete; pair it
+   * with an idempotency key to retry safely.
+   */
+  withSignal(signal: AbortSignal): EnvVaultClient {
+    return this.scoped({ signal });
   }
 
   /** Liveness check: `GET /api/v1/health`. */
@@ -902,6 +1047,166 @@ export class EnvVaultClient {
     });
   }
 
+  /* --------------------------------------------- Environment intelligence */
+
+  /** Compares two environments of a project (metadata unless `compareValues`). */
+  compareEnvironments(
+    workspaceId: string,
+    projectId: string,
+    input: CompareEnvironmentsInput,
+  ): Promise<EnvironmentComparison> {
+    return this.request(`${projectPath(workspaceId, projectId)}/environments/compare`, {
+      method: 'POST',
+      body: input,
+      schema: environmentComparisonSchema,
+    });
+  }
+
+  effectiveConfiguration(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+  ): Promise<EffectiveConfiguration> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/effective`, {
+      schema: effectiveConfigurationSchema,
+    });
+  }
+
+  setBaseEnvironment(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    baseEnvironmentId: string | null,
+  ): Promise<EffectiveConfiguration> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/inheritance`, {
+      method: 'PUT',
+      body: { baseEnvironmentId },
+      schema: effectiveConfigurationSchema,
+    });
+  }
+
+  validationRules(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+  ): Promise<ValidationRule[]> {
+    return this.request(
+      `${environmentPath(workspaceId, projectId, environmentId)}/validation-rules`,
+      {
+        schema: z.array(validationRuleSchema),
+      },
+    );
+  }
+
+  replaceValidationRules(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: ReplaceValidationRulesInput,
+  ): Promise<ValidationRule[]> {
+    return this.request(
+      `${environmentPath(workspaceId, projectId, environmentId)}/validation-rules`,
+      {
+        method: 'PUT',
+        body: input,
+        schema: z.array(validationRuleSchema),
+      },
+    );
+  }
+
+  evaluateReadiness(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: ReadinessInput = {},
+  ): Promise<ReadinessReport> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/readiness`, {
+      method: 'POST',
+      body: input,
+      schema: readinessReportSchema,
+    });
+  }
+
+  listSnapshots(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    query: { page?: number; pageSize?: number } = {},
+  ): Promise<SnapshotPage> {
+    return this.request(
+      `${environmentPath(workspaceId, projectId, environmentId)}/snapshots${toQuery(query)}`,
+      { schema: snapshotPageSchema },
+    );
+  }
+
+  createSnapshot(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: CreateSnapshotInput = {},
+  ): Promise<SnapshotSummary> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/snapshots`, {
+      method: 'POST',
+      body: input,
+      schema: snapshotSummarySchema,
+    });
+  }
+
+  getSnapshot(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    snapshotId: string,
+  ): Promise<SnapshotDetail> {
+    return this.request(snapshotPath(workspaceId, projectId, environmentId, snapshotId), {
+      schema: snapshotDetailSchema,
+    });
+  }
+
+  snapshotDiff(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    snapshotId: string,
+    input: SnapshotDiffInput = {},
+  ): Promise<SnapshotDiff> {
+    return this.request(`${snapshotPath(workspaceId, projectId, environmentId, snapshotId)}/diff`, {
+      method: 'POST',
+      body: input,
+      schema: snapshotDiffSchema,
+    });
+  }
+
+  previewSnapshotRestore(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    snapshotId: string,
+    input: RestorePreviewInput = {},
+  ): Promise<RestorePreview> {
+    return this.request(
+      `${snapshotPath(workspaceId, projectId, environmentId, snapshotId)}/restore/preview`,
+      { method: 'POST', body: input, schema: restorePreviewSchema },
+    );
+  }
+
+  restoreSnapshot(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    snapshotId: string,
+    input: RestoreSnapshotInput,
+  ): Promise<RestoreResult> {
+    return this.request(
+      `${snapshotPath(workspaceId, projectId, environmentId, snapshotId)}/restore`,
+      {
+        method: 'POST',
+        body: input,
+        schema: restoreResultSchema,
+      },
+    );
+  }
+
   /** After a Neon Auth password change or session revocation: invalidate issued API tokens. */
   async revokeTokens(reason: 'password_changed' | 'sessions_revoked'): Promise<void> {
     await this.request('/auth/tokens/revoke', {
@@ -929,9 +1234,568 @@ export class EnvVaultClient {
     });
   }
 
+  /** Protocol version and features (public). */
+  meta(): Promise<MetaResponse> {
+    return this.request('/meta', { schema: metaResponseSchema, authenticated: false });
+  }
+
+  /** Refuses a server whose protocol version this client does not speak. */
+  async checkCompatibility(): Promise<MetaResponse> {
+    const meta = await this.meta();
+    if (meta.protocolVersion !== API_PROTOCOL_VERSION) {
+      throw new EnvVaultIncompatibleApiError(meta.protocolVersion, API_PROTOCOL_VERSION);
+    }
+    return meta;
+  }
+
+  /** CLI sign in, step 1: open a request the person approves in the browser. */
+  startCliLogin(input: CliDeviceStartInput): Promise<CliDeviceStart> {
+    return this.request('/cli/device/authorize', {
+      method: 'POST',
+      body: input,
+      schema: cliDeviceStartSchema,
+      authenticated: false,
+    });
+  }
+
+  /** CLI sign in, step 3: throws EnvVaultApiError with AUTHORIZATION_PENDING until approved. */
+  pollCliLogin(deviceCode: string): Promise<CliToken> {
+    return this.request('/cli/device/token', {
+      method: 'POST',
+      body: { deviceCode },
+      schema: cliTokenSchema,
+      authenticated: false,
+    });
+  }
+
+  refreshCliSession(refreshToken: string): Promise<CliToken> {
+    return this.request('/cli/token/refresh', {
+      method: 'POST',
+      body: { refreshToken },
+      schema: cliTokenSchema,
+      authenticated: false,
+    });
+  }
+
+  cliLoginRequest(userCode: string): Promise<CliDeviceRequest> {
+    return this.request(`/cli/device/${encodeURIComponent(userCode)}`, {
+      schema: cliDeviceRequestSchema,
+    });
+  }
+
+  async approveCliLogin(userCode: string): Promise<void> {
+    await this.request('/cli/device/approve', {
+      method: 'POST',
+      body: { userCode },
+      schema: noContentSchema,
+    });
+  }
+
+  async denyCliLogin(userCode: string): Promise<void> {
+    await this.request('/cli/device/deny', {
+      method: 'POST',
+      body: { userCode },
+      schema: noContentSchema,
+    });
+  }
+
+  async cliSessions(): Promise<CliSession[]> {
+    return (await this.request('/cli/sessions', { schema: cliSessionListSchema })).items;
+  }
+
+  /** Ends the calling CLI session (envvault logout). */
+  async endCliSession(): Promise<void> {
+    await this.request('/cli/sessions/current/revoke', { method: 'POST', schema: noContentSchema });
+  }
+
+  async revokeCliSession(sessionId: string): Promise<void> {
+    await this.request(`/cli/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      schema: noContentSchema,
+    });
+  }
+
+  /** Decrypted values for a local process. Needs `secret:runtime`; never cached. */
+  runtimeConfiguration(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    input: RuntimeConfigurationInput = {},
+  ): Promise<RuntimeConfiguration> {
+    return this.request(`${environmentPath(workspaceId, projectId, environmentId)}/runtime`, {
+      method: 'POST',
+      body: input,
+      schema: runtimeConfigurationSchema,
+    });
+  }
+
+  /* ------------------------------------------------- machine identities */
+
+  listMachineIdentities(
+    workspaceId: string,
+    projectId: string,
+    query: MachineIdentityQuery = {},
+  ): Promise<MachineIdentityList> {
+    return this.request(`${machinePath(workspaceId, projectId)}${toQuery(query)}`, {
+      schema: machineIdentityListSchema,
+    });
+  }
+
+  createMachineIdentity(
+    workspaceId: string,
+    projectId: string,
+    input: CreateMachineIdentityInput,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(machinePath(workspaceId, projectId), {
+      method: 'POST',
+      body: input,
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  machineIdentity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(machinePath(workspaceId, projectId, identityId), {
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  updateMachineIdentity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    input: UpdateMachineIdentityInput,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(machinePath(workspaceId, projectId, identityId), {
+      method: 'PATCH',
+      body: input,
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  disableMachineIdentity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    input: DisableMachineIdentityInput = {},
+  ): Promise<MachineIdentitySummary> {
+    return this.request(`${machinePath(workspaceId, projectId, identityId)}/disable`, {
+      method: 'POST',
+      body: input,
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  /** Needs a recent step up. */
+  enableMachineIdentity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(`${machinePath(workspaceId, projectId, identityId)}/enable`, {
+      method: 'POST',
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  async retireMachineIdentity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+  ): Promise<void> {
+    await this.request(machinePath(workspaceId, projectId, identityId), {
+      method: 'DELETE',
+      schema: noContentSchema,
+    });
+  }
+
+  async serviceCredentials(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+  ): Promise<ServiceCredential[]> {
+    return (
+      await this.request(`${machinePath(workspaceId, projectId, identityId)}/credentials`, {
+        schema: serviceCredentialListSchema,
+      })
+    ).items;
+  }
+
+  /** Needs a recent step up. The token in the result is shown once; keep it out of logs. */
+  issueServiceCredential(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    input: CreateServiceCredentialInput,
+  ): Promise<IssuedServiceCredential> {
+    return this.request(`${machinePath(workspaceId, projectId, identityId)}/credentials`, {
+      method: 'POST',
+      body: input,
+      schema: issuedServiceCredentialSchema,
+    });
+  }
+
+  /** Needs a recent step up. Not retried: a repeat would rotate the replacement. */
+  rotateServiceCredential(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    credentialId: string,
+    input: RotateServiceCredentialInput = {},
+  ): Promise<IssuedServiceCredential> {
+    return this.request(
+      `${machinePath(workspaceId, projectId, identityId)}/credentials/${encodeURIComponent(credentialId)}/rotate`,
+      { method: 'POST', body: input, schema: issuedServiceCredentialSchema },
+    );
+  }
+
+  /** Needs a recent step up. */
+  revokeServiceCredential(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    credentialId: string,
+    input: RevokeServiceCredentialInput = {},
+  ): Promise<ServiceCredential> {
+    return this.request(
+      `${machinePath(workspaceId, projectId, identityId)}/credentials/${encodeURIComponent(credentialId)}/revoke`,
+      { method: 'POST', body: input, schema: serviceCredentialSchema },
+    );
+  }
+
+  /** ALLOW needs a recent step up and the role's permissions on that environment yourself. */
+  grantMachineAccess(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    input: CreateMachineGrantInput,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(`${machinePath(workspaceId, projectId, identityId)}/grants`, {
+      method: 'POST',
+      body: input,
+      schema: machineIdentitySummarySchema,
+    });
+  }
+
+  removeMachineGrant(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    grantId: string,
+  ): Promise<MachineIdentitySummary> {
+    return this.request(
+      `${machinePath(workspaceId, projectId, identityId)}/grants/${encodeURIComponent(grantId)}`,
+      { method: 'DELETE', schema: machineIdentitySummarySchema },
+    );
+  }
+
+  machineIdentityActivity(
+    workspaceId: string,
+    projectId: string,
+    identityId: string,
+    query: ActivityQuery = {},
+  ): Promise<MachineActivityPage> {
+    return this.request(
+      `${machinePath(workspaceId, projectId, identityId)}/activity${toQuery(query)}`,
+      { schema: machineActivityPageSchema },
+    );
+  }
+
+  /* ----------------------------------------------- GitHub trust bindings */
+
+  listOidcTrustBindings(
+    workspaceId: string,
+    projectId: string,
+    query: OidcTrustBindingQuery = {},
+  ): Promise<OidcTrustBindingList> {
+    return this.request(`${bindingPath(workspaceId, projectId)}${toQuery(query)}`, {
+      schema: oidcTrustBindingListSchema,
+    });
+  }
+
+  /** Needs a recent step up, and the binding's access on its environments yourself. */
+  createOidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    input: CreateOidcTrustBindingInput,
+  ): Promise<OidcTrustBinding> {
+    return this.request(bindingPath(workspaceId, projectId), {
+      method: 'POST',
+      body: input,
+      schema: oidcTrustBindingSchema,
+    });
+  }
+
+  oidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+  ): Promise<OidcTrustBinding> {
+    return this.request(bindingPath(workspaceId, projectId, bindingId), {
+      schema: oidcTrustBindingSchema,
+    });
+  }
+
+  /** Needs a recent step up. */
+  updateOidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+    input: UpdateOidcTrustBindingInput,
+  ): Promise<OidcTrustBinding> {
+    return this.request(bindingPath(workspaceId, projectId, bindingId), {
+      method: 'PATCH',
+      body: input,
+      schema: oidcTrustBindingSchema,
+    });
+  }
+
+  disableOidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+  ): Promise<OidcTrustBinding> {
+    return this.request(`${bindingPath(workspaceId, projectId, bindingId)}/disable`, {
+      method: 'POST',
+      schema: oidcTrustBindingSchema,
+    });
+  }
+
+  /** Needs a recent step up. */
+  enableOidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+  ): Promise<OidcTrustBinding> {
+    return this.request(`${bindingPath(workspaceId, projectId, bindingId)}/enable`, {
+      method: 'POST',
+      schema: oidcTrustBindingSchema,
+    });
+  }
+
+  /** Needs a recent step up. The binding is revoked and its tokens stop at once. */
+  async deleteOidcTrustBinding(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+  ): Promise<void> {
+    await this.request(bindingPath(workspaceId, projectId, bindingId), {
+      method: 'DELETE',
+      schema: noContentSchema,
+    });
+  }
+
+  oidcTrustBindingAttempts(
+    workspaceId: string,
+    projectId: string,
+    bindingId: string,
+  ): Promise<OidcBindingAttemptList> {
+    return this.request(`${bindingPath(workspaceId, projectId, bindingId)}/attempts`, {
+      schema: oidcBindingAttemptListSchema,
+    });
+  }
+
+  /* --------------------------------------------- machine side (evv_mt_) */
+
+  /**
+   * Exchanges a GitHub Actions OIDC identity token for a machine access
+   * token. The identity token goes in the Authorization header of this one
+   * request and is accepted once, so this call is never retried
+   * automatically: ask GitHub for a new token to try again.
+   */
+  exchangeOidcToken(identityToken: string, input: OidcTokenInput = {}): Promise<MachineToken> {
+    return this.request('/machine/oidc/token', {
+      method: 'POST',
+      body: input,
+      bearer: identityToken,
+      schema: machineTokenSchema,
+    });
+  }
+
+  /**
+   * Exchanges a service credential for a machine access token. The
+   * credential goes in the Authorization header of this one request only;
+   * use the returned token (via `getAccessToken`) for the other machine calls.
+   */
+  exchangeServiceCredential(
+    credential: string,
+    input: MachineTokenInput = {},
+  ): Promise<MachineToken> {
+    return this.request('/machine/token', {
+      method: 'POST',
+      body: input,
+      bearer: credential,
+      schema: machineTokenSchema,
+    });
+  }
+
+  async revokeMachineToken(): Promise<void> {
+    await this.request('/machine/token/revoke', { method: 'POST', schema: noContentSchema });
+  }
+
+  machineSelf(): Promise<MachineSelf> {
+    return this.request('/machine/identity', { schema: machineSelfSchema });
+  }
+
+  async machineEnvironments(): Promise<MachineEnvironment[]> {
+    return (
+      await this.request('/machine/environments', {
+        schema: z.object({ items: z.array(machineEnvironmentSchema) }),
+      })
+    ).items;
+  }
+
+  machineEnvironment(environmentId: string): Promise<MachineEnvironment> {
+    return this.request(`/machine/environments/${encodeURIComponent(environmentId)}`, {
+      schema: machineEnvironmentSchema,
+    });
+  }
+
+  machineVariables(environmentId: string): Promise<MachineVariableList> {
+    return this.request(`/machine/environments/${encodeURIComponent(environmentId)}/variables`, {
+      schema: machineVariableListSchema,
+    });
+  }
+
+  /** Decrypted values for the calling process. Needs `secret:runtime`; never cached. */
+  machineRuntime(
+    environmentId: string,
+    input: RuntimeConfigurationInput = {},
+  ): Promise<RuntimeConfiguration> {
+    return this.request(`/machine/environments/${encodeURIComponent(environmentId)}/runtime`, {
+      method: 'POST',
+      body: input,
+      schema: runtimeConfigurationSchema,
+    });
+  }
+
+  retentionPolicy(workspaceId: string): Promise<RetentionPolicy> {
+    return this.request(`${workspacePath(workspaceId)}/retention`, {
+      schema: retentionPolicySchema,
+    });
+  }
+
+  updateRetentionPolicy(
+    workspaceId: string,
+    input: RetentionPolicyInput,
+  ): Promise<RetentionPolicy> {
+    return this.request(`${workspacePath(workspaceId)}/retention`, {
+      method: 'PUT',
+      body: input,
+      schema: retentionPolicySchema,
+    });
+  }
+
+  previewRetention(workspaceId: string): Promise<RetentionPreview> {
+    return this.request(`${workspacePath(workspaceId)}/retention/preview`, {
+      method: 'POST',
+      schema: retentionPreviewSchema,
+    });
+  }
+
+  /** Queues a purge. Needs workspace:delete, a recent step up and the slug as confirmation. */
+  startRetentionRun(workspaceId: string, confirm: string): Promise<MaintenanceJob> {
+    return this.request(`${workspacePath(workspaceId)}/retention/runs`, {
+      method: 'POST',
+      body: { confirm },
+      schema: maintenanceJobSchema,
+    });
+  }
+
+  retentionRuns(workspaceId: string): Promise<{ items: MaintenanceJob[] }> {
+    return this.request(`${workspacePath(workspaceId)}/retention/runs`, {
+      schema: z.object({ items: z.array(maintenanceJobSchema) }),
+    });
+  }
+
+  retentionRun(workspaceId: string, jobId: string): Promise<MaintenanceJob> {
+    return this.request(
+      `${workspacePath(workspaceId)}/retention/runs/${encodeURIComponent(jobId)}`,
+      {
+        schema: maintenanceJobSchema,
+      },
+    );
+  }
+
+  /* --------------------------------------------------------- iteration */
+
+  /** Every project of a workspace the caller can see, fetched page by page. */
+  iterateProjects(workspaceId: string, query: Omit<ListProjectsQuery, 'page'> = {}) {
+    return paginate((page) => this.listProjects(workspaceId, { ...query, page, pageSize: 100 }));
+  }
+
+  iterateEnvironments(
+    workspaceId: string,
+    projectId: string,
+    query: Omit<ListEnvironmentsQuery, 'page'> = {},
+  ) {
+    return paginate((page) =>
+      this.listEnvironments(workspaceId, projectId, { ...query, page, pageSize: 100 }),
+    );
+  }
+
+  /** Variable metadata (never values) of an environment. */
+  iterateSecrets(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    query: Omit<ListSecretsQuery, 'page'> = {},
+  ) {
+    return paginate((page) =>
+      this.listSecrets(workspaceId, projectId, environmentId, { ...query, page, pageSize: 100 }),
+    );
+  }
+
+  iterateSecretVersions(
+    workspaceId: string,
+    projectId: string,
+    environmentId: string,
+    secretId: string,
+  ) {
+    return paginateBefore((before) =>
+      this.listSecretVersions(workspaceId, projectId, environmentId, secretId, {
+        ...(before === undefined ? {} : { before }),
+      }),
+    );
+  }
+
+  iterateSnapshots(workspaceId: string, projectId: string, environmentId: string) {
+    return paginate((page) =>
+      this.listSnapshots(workspaceId, projectId, environmentId, { page, pageSize: 100 }),
+    );
+  }
+
+  iterateProjectActivity(
+    workspaceId: string,
+    projectId: string,
+    query: Omit<ActivityQuery, 'cursor'> = {},
+  ) {
+    return paginateCursor((cursor) =>
+      this.projectActivity(workspaceId, projectId, {
+        ...query,
+        ...(cursor === undefined ? {} : { cursor }),
+      }),
+    );
+  }
+
+  iterateMachineIdentityActivity(workspaceId: string, projectId: string, identityId: string) {
+    return paginateCursor((cursor) =>
+      this.machineIdentityActivity(workspaceId, projectId, identityId, {
+        ...(cursor === undefined ? {} : { cursor }),
+      }),
+    );
+  }
+
   private async request<T>(path: string, options: RequestOptions<T>): Promise<T> {
+    const method = options.method ?? 'GET';
     const headers: Record<string, string> = { accept: 'application/json' };
-    if (options.authenticated !== false) {
+    if (this.options.userAgent) headers['user-agent'] = this.options.userAgent;
+    if (options.bearer !== undefined) {
+      headers.authorization = `Bearer ${options.bearer}`;
+    } else if (options.authenticated !== false) {
       const token = await this.getAccessToken?.();
       if (!token) {
         throw new EnvVaultApiError(401, {
@@ -943,21 +1807,71 @@ export class EnvVaultClient {
       headers.authorization = `Bearer ${token}`;
     }
     if (options.body !== undefined) headers['content-type'] = 'application/json';
+    if (this.idempotencyKey && method !== 'GET') {
+      headers['idempotency-key'] = this.idempotencyKey;
+    }
+    // Repeating is only safe for reads and for mutations the server can deduplicate.
+    const repeatable = method === 'GET' || this.idempotencyKey !== undefined;
+    const attempts = 1 + (repeatable ? Math.max(0, this.options.retries ?? 0) : 0);
+    const rateLimitAttempts = repeatable ? Math.max(0, this.options.rateLimitRetries ?? 0) : 0;
+    const maxWait = this.options.maxRetryAfterMs ?? 30_000;
+    const cancel = this.signal;
 
-    const response = await this.fetchImpl(`${this.baseUrl}${API_BASE_PATH}${path}`, {
-      method: options.method ?? 'GET',
-      headers,
-      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
+    let response: Response | undefined;
+    let rateLimited = 0;
+    for (let attempt = 1; ; attempt++) {
+      if (cancel?.aborted) throw new EnvVaultAbortError();
+      const timeout = AbortSignal.timeout(this.timeoutMs);
+      try {
+        response = await this.fetchImpl(`${this.baseUrl}${API_BASE_PATH}${path}`, {
+          method,
+          headers,
+          ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+          signal: cancel ? AbortSignal.any([timeout, cancel]) : timeout,
+        });
+      } catch (error) {
+        if (cancel?.aborted) throw new EnvVaultAbortError();
+        if (attempt < attempts) {
+          await pause(backoffMs(attempt), cancel);
+          continue;
+        }
+        const name = (error as Error | undefined)?.name;
+        throw new EnvVaultNetworkError(
+          name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'unreachable',
+        );
+      }
+      if (attempt < attempts && [502, 503, 504].includes(response.status)) {
+        await response.body?.cancel().catch(() => undefined);
+        await pause(backoffMs(attempt), cancel);
+        continue;
+      }
+      const wait = retryAfterMs(response);
+      if (
+        response.status === 429 &&
+        rateLimited < rateLimitAttempts &&
+        wait !== undefined &&
+        wait <= maxWait
+      ) {
+        rateLimited++;
+        await response.body?.cancel().catch(() => undefined);
+        await pause(wait, cancel);
+        continue;
+      }
+      break;
+    }
     const body: unknown =
       response.status === 204 ? undefined : await response.json().catch(() => undefined);
 
     if (!response.ok && !(options.acceptedErrorStatuses ?? []).includes(response.status)) {
       const parsedError = apiErrorResponseSchema.safeParse(body);
+      const wait = retryAfterMs(response);
       throw new EnvVaultApiError(
         response.status,
         parsedError.success ? parsedError.data.error : undefined,
+        {
+          retryAfterSeconds: wait === undefined ? undefined : Math.ceil(wait / 1000),
+          requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+        },
       );
     }
 
@@ -967,6 +1881,39 @@ export class EnvVaultClient {
     }
     return parsed.data as T;
   }
+}
+
+function backoffMs(attempt: number): number {
+  return Math.min(2000, 200 * 2 ** (attempt - 1)) * (0.5 + Math.random() / 2);
+}
+
+/** Waits `ms`, or rejects with EnvVaultAbortError as soon as `signal` aborts. */
+function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new EnvVaultAbortError());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new EnvVaultAbortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/** `Retry-After` as milliseconds (seconds or an HTTP date), when present and sane. */
+function retryAfterMs(response: Response): number | undefined {
+  const value = response.headers.get('retry-after');
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
 }
 
 /** An invitation by link token, or by id when it is addressed to the signed-in user. */
@@ -1009,6 +1956,25 @@ function secretPath(
   secretId: string,
 ): string {
   return `${secretsPath(workspaceId, projectId, environmentId)}/${encodeURIComponent(secretId)}`;
+}
+
+function snapshotPath(
+  workspaceId: string,
+  projectId: string,
+  environmentId: string,
+  snapshotId: string,
+): string {
+  return `${environmentPath(workspaceId, projectId, environmentId)}/snapshots/${encodeURIComponent(snapshotId)}`;
+}
+
+function bindingPath(workspaceId: string, projectId: string, bindingId?: string): string {
+  const base = `${projectPath(workspaceId, projectId)}/oidc-trust-bindings`;
+  return bindingId ? `${base}/${encodeURIComponent(bindingId)}` : base;
+}
+
+function machinePath(workspaceId: string, projectId: string, identityId?: string): string {
+  const base = `${projectPath(workspaceId, projectId)}/machine-identities`;
+  return identityId ? `${base}/${encodeURIComponent(identityId)}` : base;
 }
 
 function workspacePath(workspaceId: string): string {

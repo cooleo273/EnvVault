@@ -1,21 +1,17 @@
 # Deployment
 
-No deployment manifests exist yet: production deployment targets (container images,
-Kubernetes/Helm, or a managed platform) are defined in a later phase.
+Reference deployment for a small installation (one host, Docker Compose, Caddy for TLS,
+Redis, Neon). The guide is [docs/deployment.md](../../docs/deployment.md); operator
+procedures are in [docs/operational-runbook.md](../../docs/operational-runbook.md).
 
-Requirements any production deployment must meet:
+| File                     | Purpose                                                                     |
+| ------------------------ | --------------------------------------------------------------------------- |
+| `docker/api.Dockerfile`  | API image (`runtime` target) and migration runner (`migrate` target)        |
+| `docker/web.Dockerfile`  | Next.js standalone web image                                                |
+| `compose.production.yml` | Caddy, web, API, Redis and the one off migration service                    |
+| `Caddyfile`              | TLS (Let's Encrypt, TLS 1.2 and 1.3), HSTS, reverse proxy to the web server |
+| `env/*.env.example`      | Configuration templates; copies (`*.env`) are gitignored                    |
 
-- **PostgreSQL** (managed, TLS required, automated backups), referenced through
-  `DATABASE_URL` from the platform's secret manager.
-- **Managed KMS** for envelope encryption (AWS KMS, Google Cloud KMS, Azure Key Vault or
-  HashiCorp Vault Transit), preferably accessed through workload identity rather than
-  static credentials. Root keys never leave the KMS.
-- **Redis** (managed, TLS, auth) before running more than one API replica (shared rate
-  limiting).
-- API configured with `NODE_ENV=production`, `API_HOST=0.0.0.0` inside containers,
-  `https` origins in `CORS_ORIGINS`, and `TRUST_PROXY=true` only behind a trusted load
-  balancer.
-- TLS termination in front of both the web app and the API.
-- Probes: liveness `GET /api/v1/health`, readiness `GET /api/v1/health/ready`.
-- Migrations applied with `pnpm --filter @envvault/database db:migrate:deploy` as a
-  release step, never on application start.
+These files have not been built or run yet. Verify them on a staging host first. Production
+still needs the decisions listed in
+[docs/security-hardening.md](../../docs/security-hardening.md#10-remaining-risks-and-production-blockers).

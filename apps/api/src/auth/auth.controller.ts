@@ -1,5 +1,4 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Post, Req } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
 import { createRepositories } from '@envvault/database';
 import {
   AUTH_ERROR_CODES,
@@ -21,6 +20,7 @@ import { AllowUnverifiedEmail, Authenticated, CurrentPrincipal } from './auth.de
 import { CREDENTIAL_VERIFIER } from './auth.tokens.js';
 import type { CredentialVerifier } from './credential.verifier.js';
 import type { AuthenticatedRequest, Principal } from './principal.js';
+import { LimitSensitiveAction } from '../rate-limit/sensitive-action.guard.js';
 
 @Controller({ version: '1' })
 export class AuthController {
@@ -78,6 +78,12 @@ export class AuthController {
     const reason = body.reason === 'password_changed' ? 'PASSWORD_CHANGED' : 'LOGOUT_ALL_DEVICES';
     await repos.authState.revokeTokensIssuedBefore(principal.userId, reason);
     await repos.authState.clearStepUpGrants(principal.userId);
+    // CLI sessions end too; the cutoff above would refuse them anyway, this makes it explicit.
+    await repos.cliAuth.revokeAllForUser(
+      principal.userId,
+      body.reason === 'password_changed' ? 'password_changed' : 'sign_out_everywhere',
+      new Date(),
+    );
     await repos.audit.append({
       actorUserId: principal.userId,
       action:
@@ -105,7 +111,7 @@ export class AuthController {
   @Post('auth/step-up')
   @HttpCode(HttpStatus.OK)
   @Authenticated()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @LimitSensitiveAction('step-up')
   async stepUp(
     @CurrentPrincipal() principal: Principal,
     @Body(new ZodValidationPipe(stepUpInputSchema)) body: StepUpInput,

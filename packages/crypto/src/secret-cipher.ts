@@ -233,6 +233,25 @@ export class SecretCipher {
   }
 
   /**
+   * Proves an envelope decrypts under its context without producing the
+   * value: the plaintext stays a buffer that is zeroed before returning, so
+   * operator checks never hold secrets as immutable strings.
+   */
+  async verifySecret(envelope: SecretEnvelope, context: SecretEncryptionContext): Promise<void> {
+    assertSecretEnvelope(envelope);
+    if (envelope.providerId !== this.provider.providerId) {
+      throw new KeyNotFoundError();
+    }
+    const aad = valueAad(envelope.formatVersion, context);
+    const dataKey = await this.provider.unwrapDataKey(envelope, dataKeyContext(context));
+    try {
+      dataKey.use((key) => open(key, envelope, aad)).fill(0);
+    } finally {
+      dataKey.destroy();
+    }
+  }
+
+  /**
    * Re-wraps the data key under the provider's active key version without
    * touching the value ciphertext. Idempotent: an envelope already on the
    * active version is returned unchanged. The old wrapped key is authenticated

@@ -45,6 +45,7 @@ import { HistoryDrawer } from './history-drawer';
 import { ImportWizard } from './import-wizard';
 import { SecretValueCell } from './secret-value-cell';
 import { VariableDialog } from './variable-dialog';
+import { InheritedVariableIndicator } from '@/features/intelligence/inherited-variables';
 
 const NO_CATEGORY = 'none';
 const NO_SELECTION: ReadonlyMap<string, SelectedSecret> = new Map();
@@ -83,6 +84,8 @@ export interface VariablesPanelProps {
   environmentName: string;
   /** Environments the caller can see (for exporting another one). */
   environments: readonly Pick<EnvironmentSummary, 'id' | 'name' | 'isProtected'>[];
+  /** Local names that replace an inheritable variable of the base environment. */
+  overrides?: { baseName: string; keys: readonly string[] };
 }
 
 type DialogState = { mode: 'add'; key?: string } | { mode: 'edit'; secret: SecretSummary } | null;
@@ -103,6 +106,7 @@ export function VariablesPanel({
   missingKeys,
   environmentName,
   environments,
+  overrides,
 }: VariablesPanelProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -230,6 +234,10 @@ export function VariablesPanel({
               {s.key}
             </span>
             {s.isRequired ? <StatusBadge tone="neutral" label="Required" dot={false} /> : null}
+            {s.inheritable ? <StatusBadge tone="info" label="Inheritable" dot={false} /> : null}
+            {overrides?.keys.includes(s.key) ? (
+              <InheritedVariableIndicator source="overrides" baseName={overrides.baseName} />
+            ) : null}
           </span>
           {s.description ? (
             <span className="truncate text-xs text-muted-foreground" title={s.description}>

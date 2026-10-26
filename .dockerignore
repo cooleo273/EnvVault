@@ -1,0 +1,22 @@
+# Never send secrets or local state into an image build.
+**/.env
+**/.env.*
+!**/.env.example
+**/*.env
+!**/*.env.example
+.envvault/
+**/*keyring*.json
+**/recovery-key*.json
+**/integrity*.json
+**/*.pem
+**/*.key
+**/node_modules
+**/.next
+**/.next-e2e
+**/dist
+**/coverage
+**/playwright-report
+**/test-results
+apps/web/e2e-auth/.auth
+.git
+.turbo

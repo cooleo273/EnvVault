@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { AddressInfo } from 'node:net';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { createPrismaClient, type PrismaClient } from '@envvault/database';
@@ -44,6 +45,9 @@ export class Harness {
       NEON_AUTH_BASE_URL: neon.baseUrl,
       RATE_LIMIT_MAX: '10000',
       RATE_LIMIT_SENSITIVE_MAX: '10000',
+      // Background workers would race the tests; tests run jobs explicitly.
+      MAINTENANCE_POLL_SECONDS: '0',
+      AUDIT_SEAL_INTERVAL_SECONDS: '0',
       ...envOverrides,
     });
     const moduleRef = await Test.createTestingModule({
@@ -69,6 +73,13 @@ export class Harness {
 
   api() {
     return request(this.app.getHttpServer());
+  }
+
+  /** Listens on a free loopback port, for clients in other processes such as the CLI. */
+  async listen(): Promise<string> {
+    await this.app.listen(0, '127.0.0.1');
+    const { port } = this.app.getHttpServer().address() as AddressInfo;
+    return `http://127.0.0.1:${String(port)}`;
   }
 
   newUser(label: string, overrides: { emailVerified?: boolean; email?: string } = {}): TestUser {

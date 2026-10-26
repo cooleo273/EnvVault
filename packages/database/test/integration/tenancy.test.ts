@@ -102,7 +102,7 @@ describe('tenant isolation constraints', () => {
 
   it('rejects access policies for a service identity from another workspace', async () => {
     const identity = await db.serviceIdentity.create({
-      data: { workspaceId: b.workspaceId, name: 'ci' },
+      data: { workspaceId: b.workspaceId, projectId: b.projectId, name: 'ci' },
     });
     await expectViolation(
       db.accessPolicy.create({
@@ -139,7 +139,7 @@ describe('tenant isolation constraints', () => {
 
   it('rejects secret attribution to another workspace service identity', async () => {
     const identity = await db.serviceIdentity.create({
-      data: { workspaceId: b.workspaceId, name: 'ci' },
+      data: { workspaceId: b.workspaceId, projectId: b.projectId, name: 'ci' },
     });
     await expectViolation(
       db.secret.create({

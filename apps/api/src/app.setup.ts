@@ -32,8 +32,8 @@ export function configureApp(app: NestExpressApplication, env: Env): NestExpress
     origin: env.CORS_ORIGINS,
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization', REQUEST_ID_HEADER],
-    exposedHeaders: [REQUEST_ID_HEADER],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', REQUEST_ID_HEADER],
+    exposedHeaders: [REQUEST_ID_HEADER, 'Retry-After', 'Idempotent-Replayed'],
     maxAge: 600,
   });
 

@@ -315,4 +315,20 @@ describe('SecretCipher', () => {
       }).toThrow(CryptoInputError);
     });
   });
+
+  it('verifies an envelope without returning the value, and fails closed when tampered', async () => {
+    const cipher = new SecretCipher(new LocalKeyProvider(generateKeyring(), { nodeEnv: 'test' }));
+    const context = syntheticContext();
+    const envelope = await cipher.encryptSecret('synthetic-verify-value', context);
+    await expect(cipher.verifySecret(envelope, context)).resolves.toBeUndefined();
+    const tampered = { ...envelope, ciphertext: Buffer.from(envelope.ciphertext) };
+    tampered.ciphertext[0] = (tampered.ciphertext[0] ?? 0) ^ 1;
+    await expect(cipher.verifySecret(tampered, context)).rejects.toThrow(DecryptionError);
+    await expect(
+      cipher.verifySecret(envelope, {
+        ...context,
+        secretVersionId: syntheticContext().secretVersionId,
+      }),
+    ).rejects.toThrow(DecryptionError);
+  });
 });

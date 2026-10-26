@@ -1,0 +1,33 @@
+{
+  "name": "@envvault/github-action",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Run a command in GitHub Actions with EnvVault configuration, authenticated with GitHub OIDC",
+  "license": "UNLICENSED",
+  "author": "EnvVault",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cooleo273/EnvVault.git",
+    "directory": "packages/github-action"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@actions/core": "3.0.1",
+    "@envvault/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@envvault/config": "workspace:*",
+    "@types/node": "22.20.5",
+    "esbuild": "0.28.2",
+    "eslint": "10.12.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.12"
+  }
+}

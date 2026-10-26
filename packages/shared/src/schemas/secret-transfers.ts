@@ -175,7 +175,13 @@ export type ExportResult = z.infer<typeof exportResultSchema>;
 
 /* ----------------------------------------------------------------- History */
 
-export const SECRET_VERSION_ORIGINS = ['CREATE', 'UPDATE', 'IMPORT', 'ROLLBACK'] as const;
+export const SECRET_VERSION_ORIGINS = [
+  'CREATE',
+  'UPDATE',
+  'IMPORT',
+  'ROLLBACK',
+  'RESTORE',
+] as const;
 
 export const secretVersionsQuerySchema = z.object({
   /** Versions with a lower number than this (keyset pagination, newest first). */

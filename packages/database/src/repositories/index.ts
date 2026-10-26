@@ -1,3 +1,10 @@
+import { AuditSealRepository } from './audit-seal.repository.js';
+import { CliAuthRepository } from './cli-auth.repository.js';
+import { MachineIdentityRepository } from './machine-identity.repository.js';
+import { OidcTrustRepository } from './oidc-trust.repository.js';
+import { IdempotencyRepository } from './idempotency.repository.js';
+import { MaintenanceJobRepository, RetentionRepository } from './retention.repository.js';
+import { KeyMaintenanceRepository } from './key-maintenance.repository.js';
 import type { DbClient } from '../client.js';
 import { AuditRepository } from './audit.repository.js';
 import { AuthStateRepository } from './auth-state.repository.js';
@@ -11,12 +18,35 @@ import { ProjectMemberRepository } from './project-member.repository.js';
 import { ProjectRepository } from './project.repository.js';
 import { TemplateRepository } from './template.repository.js';
 import { RoleRepository } from './role.repository.js';
+import { SnapshotRepository, ValidationRuleRepository } from './intelligence.repository.js';
 import { SecretBulkRepository } from './secret-bulk.repository.js';
 import { EncryptionKeyRepository, SecretRepository } from './secret.repository.js';
 import { UserRepository } from './user.repository.js';
 import { WorkspaceRepository } from './workspace.repository.js';
 
-export { AuditRepository, type AuditEventInput } from './audit.repository.js';
+export {
+  AuditRepository,
+  type AuditEventInput,
+  type ServiceAuditEventInput,
+  type SystemAuditEventInput,
+} from './audit.repository.js';
+export {
+  MachineIdentityRepository,
+  type CredentialForExchange,
+  type MachineEnvironmentGrants,
+  type MachineGrantRecord,
+  type MachineIdentityRecord,
+  type MachineTokenRecord,
+  type NewServiceCredential,
+  type ServiceCredentialRecord,
+} from './machine-identity.repository.js';
+export {
+  OidcTrustRepository,
+  type NewOidcBinding,
+  type OidcBindingForExchange,
+  type OidcBindingRecord,
+  type OidcPolicyPatch,
+} from './oidc-trust.repository.js';
 export { AuthStateRepository, MAX_STEP_UP_TTL_SECONDS } from './auth-state.repository.js';
 export {
   effectiveInvitationStatus,
@@ -82,7 +112,16 @@ export {
   type SecretFilters,
   type SecretState,
   type ValueOverwrite,
+  type VariableRow,
 } from './secret-bulk.repository.js';
+export {
+  SnapshotRepository,
+  ValidationRuleRepository,
+  type SnapshotEntryData,
+  type SnapshotRecord,
+  type ValidationRuleData,
+  type ValidationRuleRecord,
+} from './intelligence.repository.js';
 export { TemplateRepository, type TemplateRecord } from './template.repository.js';
 export { UserRepository, type UserProfile, type VerifiedIdentity } from './user.repository.js';
 export {
@@ -102,23 +141,74 @@ export {
  *     ...
  *   });
  */
+export {
+  KeyMaintenanceRepository,
+  type EnvelopeQuery,
+  type KeyReferenceCount,
+  type StoredEnvelopeRow,
+} from './key-maintenance.repository.js';
+
+export {
+  AuditSealRepository,
+  type ChainHead,
+  type NewSeal,
+  type SealableEvent,
+  type StoredSeal,
+} from './audit-seal.repository.js';
+
+export {
+  MaintenanceJobRepository,
+  RetentionRepository,
+  type MaintenanceJobRecord,
+  type MaintenanceJobStatus,
+  type RetentionCounts,
+  type RetentionCutoffs,
+  type RetentionPolicyData,
+  type RetentionPolicyRecord,
+} from './retention.repository.js';
+
+export {
+  IdempotencyRepository,
+  type BeginResult,
+  type IdempotencyRequest,
+  type StoredIdempotency,
+} from './idempotency.repository.js';
+
+export {
+  CliAuthRepository,
+  type CliSessionRecord,
+  type DeviceGrantRecord,
+  type DeviceGrantStatus,
+  type NewCliSession,
+} from './cli-auth.repository.js';
+
 export function createRepositories(db: DbClient) {
   return {
     access: new AccessRepository(db),
     accessPolicies: new AccessPolicyRepository(db),
     activity: new ActivityRepository(db),
     audit: new AuditRepository(db),
+    auditSeals: new AuditSealRepository(db),
     authState: new AuthStateRepository(db),
+    cliAuth: new CliAuthRepository(db),
     invitations: new InvitationRepository(db),
+    machineIdentities: new MachineIdentityRepository(db),
+    oidcTrust: new OidcTrustRepository(db),
     memberships: new MembershipRepository(db),
     projects: new ProjectRepository(db),
     projectMembers: new ProjectMemberRepository(db),
     templates: new TemplateRepository(db),
     roles: new RoleRepository(db),
     environments: new EnvironmentRepository(db),
+    idempotency: new IdempotencyRepository(db),
     encryptionKeys: new EncryptionKeyRepository(db),
+    keyMaintenance: new KeyMaintenanceRepository(db),
+    maintenanceJobs: new MaintenanceJobRepository(db),
+    retention: new RetentionRepository(db),
     secrets: new SecretRepository(db),
     secretBulk: new SecretBulkRepository(db),
+    snapshots: new SnapshotRepository(db),
+    validationRules: new ValidationRuleRepository(db),
     users: new UserRepository(db),
     workspaces: new WorkspaceRepository(db),
   };

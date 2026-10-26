@@ -57,10 +57,14 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
-    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    // Compiles the first routes before any timed assertion (see warmup.setup.ts).
+    { name: 'warmup', testMatch: /warmup\.setup\.ts/ },
+    { name: 'setup', testMatch: /auth\.setup\.ts/, dependencies: ['warmup'] },
     {
       name: 'auth-flows',
-      testMatch: /(auth-flows|collaboration|secrets|secret-transfers)\.spec\.ts/,
+      dependencies: ['warmup'],
+      testMatch:
+        /(auth-flows|collaboration|secrets|secret-transfers|environment-intelligence|machines|developers|github-actions)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
@@ -111,6 +115,8 @@ export default defineConfig({
         NEXT_PUBLIC_API_URL: `http://localhost:${String(API_PORT)}`,
         // Own build dir so a developer's `pnpm dev` can keep running.
         NEXT_DIST_DIR: '.next-e2e',
+        // Keeps the dev tools badge off the mobile drawer (see next.config.ts).
+        NEXT_DEV_INDICATOR_POSITION: 'bottom-right',
       },
       reuseExistingServer: false,
       timeout: 180_000,

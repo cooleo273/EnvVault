@@ -1,0 +1,26 @@
+# Example workflow: copy to .github/workflows/ in your application repository.
+# ENVVAULT_SERVICE_CREDENTIAL is a repository or environment secret; it is
+# passed only to the steps that need it.
+name: build
+on: [push]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ENVVAULT_API_URL: https://api.envvault.example.com
+      ENVVAULT_ENVIRONMENT: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      # Install the envvault CLI here (docs/ci-authentication.md, Setup).
+      - name: Build with EnvVault configuration
+        run: ./ci/ci.sh npm run build
+        env:
+          ENVVAULT_SERVICE_CREDENTIAL: ${{ secrets.ENVVAULT_SERVICE_CREDENTIAL }}

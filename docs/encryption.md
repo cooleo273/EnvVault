@@ -178,9 +178,14 @@ checks of the route. There is no second encryption mechanism and no plaintext fa
   API memory. Anyone with that file or a memory dump can decrypt every value. There is no
   HSM, no key access policy and no independent audit of key use. A managed KMS provider is
   required before real secrets are stored.
-- **Lost keyring means lost data.** There is no escrow. A replaced keyring makes existing
-  values undecryptable (`ENCRYPTION_UNAVAILABLE`); the restart test covers both cases.
+- **Lost keyring means lost data** unless an encrypted keyring backup and its recovery key
+  survive ([key-management.md, section 6](key-management.md#6-keyring-backup-and-recovery)).
+  There is no escrow service. A replaced keyring makes existing values undecryptable
+  (`ENCRYPTION_UNAVAILABLE`).
 - **Plaintext in process memory.** Values are JavaScript strings in the API and the web
   server while a request runs. Buffers are zeroed; strings cannot be.
-- **No automated rewrap job** over `secret_versions` yet, so retiring an old key version is a
-  manual, reference counted operation.
+- **Rewrap and retirement are operator commands** (`pnpm ops keys:rewrap`, `keys:retire`,
+  see [key-management.md](key-management.md#4-rotation-rewrapping-and-retirement)); they are
+  not scheduled automatically.
+- **No cryptographic erasure.** One keyring protects every workspace, so destroying a key
+  cannot remove one tenant's data; deleting rows leaves copies in database backups.

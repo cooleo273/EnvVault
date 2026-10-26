@@ -13,6 +13,15 @@ const env = parsePublicEnv(process.env);
 const nextConfig: NextConfig = {
   // Separate build dir lets the e2e dev server run next to a developer's own `next dev`.
   distDir: process.env.NEXT_DIST_DIR ?? '.next',
+  // Container images ship the traced standalone server (infrastructure/deployment).
+  ...(process.env.NEXT_OUTPUT === 'standalone'
+    ? { output: 'standalone' as const, outputFileTracingRoot: resolve(process.cwd(), '../..') }
+    : {}),
+  // The full stack e2e server moves the dev tools badge to the right: on narrow screens the
+  // expanded badge (any dev notice) otherwise covers the left navigation drawer. Notices still show.
+  ...(process.env.NEXT_DEV_INDICATOR_POSITION === 'bottom-right'
+    ? { devIndicators: { position: 'bottom-right' as const } }
+    : {}),
   reactStrictMode: true,
   poweredByHeader: false,
   // Development logs Server Function arguments by default, and secret

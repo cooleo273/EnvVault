@@ -81,22 +81,30 @@ model Environment {
   /// Variable keys this environment is expected to define, from a template:
   /// JSON array of `{ key, description }`. Names only, never values.
   expectedKeys      Json              @default("[]") @map("expected_keys") @db.JsonB
+  /// Optional base environment of the same project that this one inherits
+  /// eligible variables from (one level; a trigger rejects chains and cycles).
+  baseEnvironmentId String?           @map("base_environment_id") @db.Uuid
   createdById       String?           @map("created_by_id") @db.Uuid
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt         DateTime?         @map("deleted_at") @db.Timestamptz(3)
 
-  project        Project              @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "environments_project_fkey")
-  createdBy      User?                @relation("EnvironmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  secrets        Secret[]
-  accessPolicies AccessPolicy[]
-  changeRequests ChangeRequest[]
-  syncJobs       IntegrationSyncJob[]
+  project                Project                       @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "environments_project_fkey")
+  createdBy              User?                         @relation("EnvironmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  secrets                Secret[]
+  accessPolicies         AccessPolicy[]
+  changeRequests         ChangeRequest[]
+  syncJobs               IntegrationSyncJob[]
+  baseEnvironment        Environment?                  @relation("EnvironmentInheritance", fields: [workspaceId, projectId, baseEnvironmentId], references: [workspaceId, projectId, id], onDelete: NoAction, onUpdate: NoAction, map: "environments_base_environment_fkey")
+  inheritingEnvironments Environment[]                 @relation("EnvironmentInheritance")
+  validationRules        ConfigurationValidationRule[]
+  snapshots              EnvironmentSnapshot[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, projectId, id])
   @@index([projectId])
   @@index([createdById])
+  @@index([baseEnvironmentId])
   @@map("environments")
 }
 

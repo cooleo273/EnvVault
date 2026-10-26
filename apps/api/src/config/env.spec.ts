@@ -16,7 +16,9 @@ describe('parseEnv', () => {
       API_PORT: 4000,
       LOG_LEVEL: 'info',
       RATE_LIMIT_TTL_SECONDS: 60,
-      RATE_LIMIT_MAX: 100,
+      RATE_LIMIT_MAX: 1000,
+      RATE_LIMIT_USER_MAX: 600,
+      RATE_LIMIT_STORE: 'memory',
       TRUST_PROXY: false,
       CORS_ORIGINS: ['http://localhost:3000'],
     });
@@ -61,8 +63,12 @@ describe('parseEnv', () => {
   it('requires https origins in production', () => {
     expect(() => parseEnv({ ...base, NODE_ENV: 'production' })).toThrow(/https origins/);
     expect(
-      parseEnv({ ...base, NODE_ENV: 'production', CORS_ORIGINS: 'https://app.example.com' })
-        .CORS_ORIGINS,
+      parseEnv({
+        ...base,
+        NODE_ENV: 'production',
+        CORS_ORIGINS: 'https://app.example.com',
+        INTEGRITY_KEY_FILE: '/keys/integrity.json',
+      }).CORS_ORIGINS,
     ).toEqual(['https://app.example.com']);
   });
 
@@ -95,7 +101,12 @@ describe('parseEnv', () => {
     });
 
     it('requires non-local https Auth endpoints in production', () => {
-      const prod = { ...base, NODE_ENV: 'production', CORS_ORIGINS: 'https://app.example.com' };
+      const prod = {
+        ...base,
+        NODE_ENV: 'production',
+        CORS_ORIGINS: 'https://app.example.com',
+        INTEGRITY_KEY_FILE: '/keys/integrity.json',
+      };
       expect(() =>
         parseEnv({ ...prod, NEON_AUTH_BASE_URL: 'http://ep-x.neonauth.example/neondb/auth' }),
       ).toThrow(/NEON_AUTH_BASE_URL: must be a non-local https URL/);

@@ -42,6 +42,8 @@ const PROJECT_ADMINISTRATION: PermissionKey[] = [
   'environment:delete',
   'environment:protect',
   'access_policy:manage',
+  'service_identity:read',
+  'service_identity:manage',
 ];
 
 const PROJECT_READ: PermissionKey[] = [
@@ -119,7 +121,9 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       'secret:delete',
       'secret:rollback',
       'secret:export',
+      'secret:runtime',
       'service_identity:read',
+      'service_identity:manage',
       'change_request:create',
       'change_request:review',
       'change_request:apply',
@@ -132,7 +136,13 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
     name: 'Developer',
     description: 'Works with secrets in unprotected environments. Cannot change project settings.',
     scope: 'PROJECT',
-    permissions: [...PROJECT_READ, 'secret:read', 'secret:write', 'change_request:create'],
+    permissions: [
+      ...PROJECT_READ,
+      'secret:read',
+      'secret:write',
+      'secret:runtime',
+      'change_request:create',
+    ],
   },
   {
     key: 'project-viewer',
@@ -171,11 +181,26 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
     permissions: ['environment:read', 'secret:list', 'environment:deploy'],
   },
   {
+    key: 'environment-lister',
+    name: 'Variable lister',
+    description: 'Sees this environment’s metadata and variable names, never values.',
+    scope: 'ENVIRONMENT',
+    permissions: ['environment:read', 'secret:list'],
+  },
+  {
+    key: 'environment-runtime',
+    name: 'Runtime loader',
+    description:
+      'Loads values into a running process (envvault run, machine identities) without revealing or exporting them.',
+    scope: 'ENVIRONMENT',
+    permissions: ['environment:read', 'secret:list', 'secret:runtime'],
+  },
+  {
     key: 'environment-reader',
     name: 'Secret reader',
-    description: 'Reads secret values in this environment.',
+    description: 'Reads secret values in this environment, and loads them into local processes.',
     scope: 'ENVIRONMENT',
-    permissions: ['environment:read', 'secret:list', 'secret:read'],
+    permissions: ['environment:read', 'secret:list', 'secret:read', 'secret:runtime'],
   },
   {
     key: 'environment-writer',
@@ -189,6 +214,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       'secret:write',
       'secret:delete',
       'secret:rollback',
+      'secret:runtime',
       'change_request:create',
     ],
   },

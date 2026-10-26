@@ -1,0 +1,8 @@
+{
+  "extends": "@envvault/config/tsconfig/node-library.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["src", "build.mjs"]
+}

@@ -1,6 +1,8 @@
 # EnvVault Architecture
 
-> Status: **Phase 3C: import, export, version history, rollback and bulk operations** (on top of Phase 3B secrets CRUD, Phase 3A envelope encryption and Phase 2 projects, environments and hierarchical authorization). This document describes the architecture as
+> Status: **Phase 5A: GitHub Actions OIDC federation and the EnvVault action** (on top of
+> the public API and SDKs in 4C, machine identities in 4B, the CLI in 4A, and the secrets,
+> encryption, projects and authorization layers of Phases 1 to 3). This document describes the architecture as
 > implemented today and the boundaries that later phases build on. Sections marked
 > _Planned_ describe intended designs that are not implemented yet.
 
@@ -23,19 +25,22 @@ stays possible, but there is no microservice split at this stage.
 
 ## 2. Repository layout
 
-| Path                        | Package              | Responsibility                                                                              |
-| --------------------------- | -------------------- | ------------------------------------------------------------------------------------------- |
-| `apps/web`                  | `@envvault/web`      | Next.js App Router frontend (Server Components by default, Tailwind CSS, shadcn/ui)         |
-| `apps/api`                  | `@envvault/api`      | NestJS REST API, the system's trust boundary                                                |
-| `apps/cli`                  | `@envvault/cli`      | `envvault` command-line client (currently `health`; secret commands come later)             |
-| `packages/shared`           | `@envvault/shared`   | Framework-agnostic contracts: Zod schemas, API constants, request-ID rules                  |
-| `packages/sdk`              | `@envvault/sdk`      | Typed REST client used by the CLI and, later, external consumers                            |
-| `packages/database`         | `@envvault/database` | Prisma schema, migrations and client factory (**server-only**)                              |
-| `packages/crypto`           | `@envvault/crypto`   | Envelope-encryption boundary: KMS provider interface + AES-256-GCM cipher (**server-only**) |
-| `packages/config`           | `@envvault/config`   | Shared TypeScript, ESLint and Prettier configuration                                        |
-| `infrastructure/docker`     | —                    | Docker Compose for local PostgreSQL and Redis                                               |
-| `infrastructure/deployment` | —                    | Deployment manifests (_planned_)                                                            |
-| `docs`                      | —                    | Architecture and project documentation                                                      |
+| Path                        | Package                                 | Responsibility                                                                              |
+| --------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `apps/web`                  | `@envvault/web`                         | Next.js App Router frontend (Server Components by default, Tailwind CSS, shadcn/ui)         |
+| `apps/api`                  | `@envvault/api`                         | NestJS REST API, the system's trust boundary                                                |
+| `apps/cli`                  | `@envvault/cli`                         | `envvault` command line client: sign in, project linking, `run`, `pull`, `doctor`           |
+| `packages/shared`           | `@envvault/shared`                      | Framework-agnostic contracts: Zod schemas, API constants, request-ID rules                  |
+| `packages/sdk`              | `@envvault/sdk`                         | Typed REST client for people, the CLI and machine identities (web server, CLI, examples)    |
+| `packages/sdk-python`       | `envvault` (PyPI name, unpublished)     | Python SDK for machine identities: runtime configuration and a process runner               |
+| `packages/github-action`    | `@envvault/github-action` (unpublished) | GitHub Action: OIDC exchange, masking, command runner; ships a committed bundle             |
+| `examples`                  | `@envvault/example-*`                   | Node.js, Next.js, Python, CI and GitHub Actions examples with placeholder credentials       |
+| `packages/database`         | `@envvault/database`                    | Prisma schema, migrations and client factory (**server-only**)                              |
+| `packages/crypto`           | `@envvault/crypto`                      | Envelope-encryption boundary: KMS provider interface + AES-256-GCM cipher (**server-only**) |
+| `packages/config`           | `@envvault/config`                      | Shared TypeScript, ESLint and Prettier configuration                                        |
+| `infrastructure/docker`     | none                                    | Docker Compose for local PostgreSQL and Redis                                               |
+| `infrastructure/deployment` | none                                    | Deployment manifests (_planned_)                                                            |
+| `docs`                      | none                                    | Architecture and project documentation                                                      |
 
 ### Package dependency rules
 
@@ -129,6 +134,17 @@ src/
                           SecretsController (CRUD, reveal, history, rollback), SecretVault
                           (the only path to the cipher), SecretAuthorizationService,
                           SecretRateLimiter and one service per concern
+  intelligence/           IntelligenceModule: environment comparison, effective configuration
+                          and inheritance, validation rules, readiness, snapshots, drift and
+                          restore; reuses SecretVault, SecretAuthorizationService and
+                          SecretRateLimiter, so every plaintext read follows the same rules
+  rate-limit/             RateLimitModule: Redis or memory storage, per user guard,
+                          SensitiveRateLimiter and the route level SensitiveActionGuard
+  integrity/              Integrity keys (audit seals, idempotency) and the audit sealer
+  audit/                  Seal encoding, sealing passes and chain verification
+  idempotency/            IdempotencyInterceptor (`@Idempotent()` on mutations)
+  retention/              Retention policies, purge runs and the maintenance worker
+  ops/                    Operator CLI (`pnpm ops`): keys, keyring backups, audit
 ```
 
 New domains (workspaces, projects, environments, secrets) are added as feature modules
@@ -199,20 +215,84 @@ environments should inject configuration through the platform's secret mechanism
 
 ### 4.6 Health checks
 
-| Endpoint                   | Purpose   | Behaviour                                                                    |
-| -------------------------- | --------- | ---------------------------------------------------------------------------- |
-| `GET /api/v1/health`       | Liveness  | Always 200 while the process serves requests; no dependency checks           |
-| `GET /api/v1/health/ready` | Readiness | `SELECT 1` against PostgreSQL with a 2 s timeout; 503 + `down` when it fails |
+| Endpoint                   | Purpose   | Behaviour                                                                                                                    |
+| -------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/health`       | Liveness  | Always 200 while the process serves requests; no dependency checks                                                           |
+| `GET /api/v1/health/ready` | Readiness | Database reachable and migrated (2 s timeout), configured keys usable; also reports the rate limit store; 503 when not ready |
 
 The Prisma client connects lazily, so the API can start (and report liveness) before
 the database is reachable. Readiness never exposes connection error details.
 
 ### 4.7 Rate limiting
 
-`@nestjs/throttler` runs globally with **in-memory storage**, which is correct for a
-single instance only. Running multiple replicas requires a shared Redis-backed store.
-That is why Redis is already part of the local infrastructure. Set `TRUST_PROXY=true`
-only behind a trusted proxy, so that client IPs are derived correctly.
+Three layers ([security-hardening.md, section 5](security-hardening.md#5-controls-added-or-verified)):
+a coarse per address limit before authentication (`@nestjs/throttler`), a per user limit
+after it, and per user limits on sensitive actions after authorization. Counters are per
+instance (`RATE_LIMIT_STORE=memory`) or shared in Redis (`RATE_LIMIT_STORE=redis`, required
+for more than one instance). If Redis fails, general limits fall back to per instance
+counting and sensitive actions are refused. Set `TRUST_PROXY=true` only behind a trusted
+proxy, so that client addresses are derived correctly.
+
+### 4.8 Background work and operator tooling
+
+The API process also runs the audit sealer (every `AUDIT_SEAL_INTERVAL_SECONDS`) and the
+maintenance worker (retention jobs, expired idempotency records). Both stop on shutdown and
+can be turned off with 0. Operator commands (`apps/api/src/ops`, run with `pnpm ops`) cover
+key rotation, rewrap, retirement, keyring backup and restore, and audit sealing and
+verification; they read the same configuration as the API.
+
+### 4.9 Public API surface (Phase 4C)
+
+There is one API (`/api/v1`) for the web app, the CLI, machine identities and SDKs; no
+separate public gateway or key mechanism exists. Its published contract is generated, not
+written by hand:
+
+- **Schemas** come from the Zod validators in `@envvault/shared` that the routes run.
+- **Access metadata** comes from `RouteAccessService` (`apps/api/src/openapi/route-access.ts`),
+  which reads the same decorators the guards enforce (`@Public`, `@AllowCliToken`,
+  `@MachineRoute`, permissions, step up, `@Deprecated`) through Nest's discovery service.
+  Each operation publishes `x-envvault-callers`, `x-envvault-permission`,
+  `x-envvault-gate-permission` and `x-envvault-step-up`.
+- **Error codes** come from `API_ERROR_CATALOG` and are published as
+  `x-envvault-error-codes`.
+- `apps/api/test/openapi.int-spec.ts` fails when a route is missing from the document, when
+  the documented callers or permissions differ from the decorators, when operation ids
+  repeat, when a schema reference or security scheme does not resolve, when an operation
+  lacks its `429` response, or when the published error codes differ from the catalog.
+
+`DeprecationInterceptor` adds `Deprecation`, `Sunset` and `Link` headers to routes marked
+`@Deprecated` ([api-versioning.md](api-versioning.md)). Conventions for errors, pagination,
+idempotency and request ids are in [api-reference.md](api-reference.md); callers and token
+routing in [api-authentication.md](api-authentication.md).
+
+The SDKs are clients of this contract only. All decryption, authorization, rate limiting and
+audit stay in the API; the Python SDK implements no cryptography, and both SDKs retry only
+requests that are safe to repeat.
+
+### 4.10 GitHub Actions OIDC (Phase 5A)
+
+GitHub jobs authenticate without a stored credential:
+
+- **Trust bindings** are `OIDC_FEDERATION` rows in `service_credentials` (issuer, audience,
+  scopes, expiry, revocation) with an `oidc_trust_policies` row of claim conditions (repository
+  and owner ids, workflow, reusable workflow, refs, GitHub environments, events, subject,
+  EnvVault environments). Access tokens keep referencing `service_credentials`, so the Phase 4B
+  token checks, revocation and per request authorization apply unchanged.
+- **Verification** (`OidcVerifier`): exact issuer allowlist, discovery and JWKS from that issuer
+  only, asymmetric algorithms, time and lifetime checks, then claim parsing. Keys are cached per
+  process; failures fail closed.
+- **Exchange** (`OidcExchangeService`, `POST /machine/oidc/token`): replay check in the shared
+  limit store, per repository limit, binding evaluation with the shared `githubMismatch` and
+  `protectedPolicyProblems` rules, then a normal machine access token. Per request, a disabled
+  binding stops its tokens.
+- **Management** (`OidcBindingsService`): project scoped routes with `service_identity`
+  permissions, step up and the creator's own authority on bound environments.
+- **Action** (`packages/github-action`): bundled with esbuild for Node 24; uses the TypeScript SDK's
+  machine client in OIDC mode, masks values with `@actions/core`, and runs the command as a child
+  process with a filtered environment.
+
+Details: [integrations/github-oidc.md](integrations/github-oidc.md),
+[integrations/github-actions.md](integrations/github-actions.md).
 
 ## 5. Web (apps/web)
 
@@ -220,7 +300,9 @@ See **[design-system.md](design-system.md)** for tokens, components and module g
 
 - **Next.js App Router**; pages are React Server Components by default. Client
   components are limited to interactive pieces (navigation, menus, dialogs, tables).
-- **Route groups:** `(marketing)` for the landing page and `(app)` for the dashboard
+- **Route groups:** `(marketing)` for the landing page and the API reference
+  (`/developers/api`, rendered server side from the OpenAPI document, read only, no tokens)
+  and `(app)` for the dashboard
   shell (`/dashboard`, `/workspaces`, `/projects`, `/members`, `/audit-logs`,
   `/integrations`, `/notifications`, `/settings`, `/design-system`), with route-level
   `loading.tsx` and `error.tsx`.
@@ -323,7 +405,27 @@ See [authentication.md](authentication.md) for the full design.
   [environments.md](environments.md).
 - The API publishes an OpenAPI 3.0 document at `GET /api/v1/openapi.json`, generated from
   the request schemas; a test fails if a route is registered but not documented.
-- Machine identities (CLI, CI/CD) will use scoped, expiring credentials (later phase).
+- The CLI signs in through an EnvVault brokered device authorization (Neon Auth has no
+  CLI flow): the person approves in the browser with a password confirmation, and the
+  API issues an opaque access token (1 hour) and a rotating refresh token (30 days, within
+  a 90 day session), stored as SHA-256 hashes in `cli_sessions`. The authentication guard
+  accepts CLI tokens only on routes marked `@AllowCliToken()` (reads, runtime load,
+  readiness, export, own sessions); every other route returns `403 CLI_TOKEN_NOT_ALLOWED`.
+  See [cli-authentication.md](cli-authentication.md).
+- `POST …/environments/:id/runtime` returns decrypted values for `envvault run`. It needs
+  the separate `secret:runtime` permission (not implied by `secret:export` or
+  `secret:read`), applies step up on protected environments, per user and per environment
+  rate limits, a value count and response size ceiling, `no-store`, and audits
+  `secret.runtime_loaded` with ids only. See [cli.md](cli.md).
+- `GET /api/v1/meta` publishes the API protocol version; the SDK's `checkCompatibility()`
+  lets clients refuse an incompatible API before sending credentials.
+- Machine identities (Phase 4B) are a principal of their own (`MachinePrincipal`, never a
+  `Principal`): they authenticate with a service credential (`evv_sk_`, HMAC-SHA256 digest under
+  the integrity key) at `POST /machine/token`, which issues a 15 minute access token (`evv_mt_`).
+  Routes marked `@MachineRoute()` accept only those tokens and authorize in their service against
+  the identity's grants (`access_policies`), confined to `environment:read`, `secret:list` and
+  `secret:runtime` and to the token's scopes; every other route refuses them. See
+  [machine-identities.md](machine-identities.md) and [service-credentials.md](service-credentials.md).
 
 ## 9. Testing strategy
 
@@ -338,6 +440,11 @@ See [authentication.md](authentication.md) for the full design.
 | Database integration | Vitest against real PostgreSQL | `packages/database/test/integration/*.test.ts` |
 | API integration | Vitest + Supertest, real Postgres, fake Neon JWKS | `apps/api/test/*.int-spec.ts` |
 | Full-stack auth e2e | Playwright: Next dev, API, Postgres, Better Auth stand-in | `apps/web/e2e-auth/*.spec.ts` |
+| TypeScript SDK contract | Vitest, SDK against the real API and Postgres | `apps/api/test/sdk.int-spec.ts` |
+| Python SDK | pytest with an in process fake API; live tests driven by the API suite | `packages/sdk-python/tests`, `apps/api/test/python-sdk.int-spec.ts` |
+| Examples | Node, Python and CI examples against the real API | `apps/api/test/examples.int-spec.ts` |
+| OIDC federation | Vitest, real API and Postgres, local OIDC issuer with real signed tokens | `apps/api/test/oidc.int-spec.ts` |
+| GitHub Action | Unit tests; the bundled action run as a runner would against the real API | `packages/github-action/src/*.test.ts`, `apps/api/test/github-action.int-spec.ts` |
 
 The API e2e tests build the real `AppModule` and apply the same `configureApp()` as
 production, replacing only the `DatabaseService`, so they need no running database.
@@ -360,6 +467,11 @@ developer's real database.
 4. `e2e-auth`: full-stack sign-up, sign-in, logout, password reset and authorization flows
    against a PostgreSQL service container and a local Better Auth stand-in for Neon Auth.
    No Neon credentials are used in CI.
+5. `python-sdk`: on Python 3.10 and 3.13, Ruff lint and format check, mypy (strict), pytest,
+   package build and `twine check`. The integration job also creates the SDK's virtual
+   environment so the Python and example contract tests run.
+
+The `verify` job also fails when `packages/github-action/dist` differs from a fresh build.
 
 ## 11. Key technology decisions
 
@@ -377,7 +489,18 @@ developer's real database.
 
 - Authentication, workspaces, projects, environments, templates, project roles,
   environment access grants and secrets CRUD with encrypted versions are implemented.
-  Phase 3C adds .env import, export, version history, rollback and bulk operations.
+  Phase 3C adds .env import, export, version history, rollback and bulk operations. Phase 3D
+  adds environment comparison, one level configuration inheritance, validation rules with
+  readiness checks, and snapshots with drift and restore. Phase 3E adds key rotation tooling,
+  keyring backups, retention, shared rate limits, audit seals, idempotency and deployment
+  configuration; see [security-hardening.md](security-hardening.md) for what remains. Phase
+  4A adds the developer CLI with device sign in, runtime loading and `.env` export. Phase 4B adds
+  machine identities, service credentials and the CLI's machine mode for CI. Phase 4C documents
+  the public API, generates its access metadata from the guards, extends the TypeScript SDK,
+  adds the Python SDK, examples and the `/developers/api` reference page. Neither SDK is
+  published. Phase 5A adds GitHub Actions OIDC trust bindings, the EnvVault action and the
+  project Integrations page; the action is not published.
+- Readiness is evaluated on request; snapshots are manual (no schedules or retention).
 - Protected-environment approvals are modelled (`required_approvals`, change request
   tables) but not enforced; no approval workflow runs yet.
 - The OpenAPI route table is registered by hand next to the controllers (kept honest by a
@@ -388,17 +511,27 @@ developer's real database.
 - See [authentication.md §9](authentication.md#9-limitations-and-open-items) for
   authentication-specific limitations (beta SDK; password reset does not revoke tokens
   that were already issued).
-- Only the self-managed local key provider exists (development and test); production
-  requires a managed KMS provider. Values must stay synthetic until then.
-- Encrypted versions are kept indefinitely; purge and retention policies are not
-  implemented.
-- Per user rate limits on plaintext reads use the throttler's in memory storage: each API
-  instance counts separately until a shared store (Redis) is configured.
-- The browser only Playwright suite runs the production build over plain http, where the
-  production CSP (`upgrade-insecure-requests`) makes the browser upgrade a prefetch redirect
-  to https; the landing page test then sees `ERR_SSL_PROTOCOL_ERROR`. This affects the test
-  setup only, not https deployments.
-- Rate limiting is per instance (in-memory).
-- Redis is provisioned locally but not used by the API yet.
-- No production deployment manifests yet (`infrastructure/deployment`).
-- Web CSP allows inline scripts until nonce-based CSP is introduced.
+- Only the local key provider exists. Production accepts an explicitly acknowledged self
+  managed keyring on the API host; a managed KMS provider is still required for real
+  secrets (see [security-hardening.md, section 10](security-hardening.md#10-remaining-risks-and-production-blockers)).
+- Retention purges are logical deletion; copies remain in Neon history and backups.
+- Rate limits are per instance unless `RATE_LIMIT_STORE=redis`; the Redis store was tested
+  against an in process emulator, not a Redis server.
+- The public Playwright suite serves the production build over plain http. The production
+  CSP (`upgrade-insecure-requests`) makes the browser upgrade a prefetch to https, which
+  fails with `ERR_SSL_PROTOCOL_ERROR` on that server (always in CI, sometimes locally). The
+  landing page test ignores that one console error; it cannot occur over https.
+- The full stack Playwright suite runs on `next dev` (production builds refuse plain http auth
+  URLs). Two development only effects are handled there: routes compile on first request, so a
+  warm up project requests the first routes before any timed assertion; and the dev tools badge
+  is moved to the bottom right for that server only, because its expanded form (any dev notice,
+  for example the Next.js 16.4.0 vulnerability notice) covered the mobile drawer's Settings link.
+  The public suite checks that production builds have no such overlay.
+- The deployment configuration in `infrastructure/deployment` has not been built or run.
+- Web CSP allows inline scripts until a nonce based CSP is introduced.
+- The CLI is tested on macOS and Linux; Windows is covered by unit tests only. It is not
+  published to a registry. Values loaded by `envvault run` are readable by the child, by
+  the same operating system user and by administrators ([cli.md](cli.md#envvault-run)).
+- Machine identities have no OIDC workload identity federation yet, no request signing (access
+  tokens are bearer tokens, limited to 15 minutes) and cannot write values. Service credentials
+  depend on `INTEGRITY_KEY_FILE`; without it they stop working when the API restarts.

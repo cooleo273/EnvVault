@@ -11,6 +11,9 @@ import {
   versionData,
 } from './secret.repository.js';
 
+/** Rows per INSERT; keeps each statement well under the 65535 parameter limit. */
+const INSERT_CHUNK = 250;
+
 export interface SecretFilters {
   status: 'active' | 'deleted';
   q?: string | undefined;
@@ -107,6 +110,48 @@ function revisionValues(items: readonly { id: string; expectedRevision: number }
   );
 }
 
+/** Metadata of one variable with its current version reference. Never a value. */
+export interface VariableRow {
+  id: string;
+  key: string;
+  type: SecretType;
+  category: string | null;
+  tags: string[];
+  description: string | null;
+  isRequired: boolean;
+  inheritable: boolean;
+  revision: number;
+  currentVersionId: string | null;
+  currentVersionNumber: number | null;
+  deleted: boolean;
+}
+
+const variableSelect = {
+  id: true,
+  key: true,
+  type: true,
+  category: true,
+  tags: true,
+  description: true,
+  isRequired: true,
+  inheritable: true,
+  revision: true,
+  currentVersionId: true,
+  deletedAt: true,
+  currentVersion: { select: { versionNumber: true } },
+} as const satisfies Prisma.SecretSelect;
+
+function toVariableRow(
+  row: Prisma.SecretGetPayload<{ select: typeof variableSelect }>,
+): VariableRow {
+  const { deletedAt, currentVersion, ...rest } = row;
+  return {
+    ...rest,
+    deleted: deletedAt !== null,
+    currentVersionNumber: currentVersion?.versionNumber ?? null,
+  };
+}
+
 /**
  * Operations on many variables of one environment at once. Every statement
  * is constrained by the environment scope, so an id from elsewhere never
@@ -134,6 +179,30 @@ export class SecretBulkRepository {
       this.db.secret.count({ where }),
     ]);
     return { items, total };
+  }
+
+  /**
+   * Live variables of the environment in name order, at most `max + 1` (so
+   * callers can tell that the environment exceeds `max`).
+   */
+  async variables(scope: EnvironmentScope, max: number): Promise<VariableRow[]> {
+    const rows = await this.db.secret.findMany({
+      where: { ...scopeWhere(scope), deletedAt: null },
+      orderBy: [{ key: 'asc' }, { id: 'asc' }],
+      take: max + 1,
+      select: variableSelect,
+    });
+    return rows.map(toVariableRow);
+  }
+
+  /** Variables by id with metadata, live or deleted. */
+  async variablesByIds(scope: EnvironmentScope, ids: readonly string[]): Promise<VariableRow[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.db.secret.findMany({
+      where: { ...scopeWhere(scope), id: { in: [...ids] } },
+      select: variableSelect,
+    });
+    return rows.map(toVariableRow);
   }
 
   /** Variables by id, live or deleted. Missing or foreign ids are simply absent. */
@@ -212,27 +281,43 @@ export class SecretBulkRepository {
     userId: string,
   ): Promise<void> {
     if (rows.length === 0) return;
-    await this.db.secret.createMany({
-      data: rows.map(({ data, version }) => ({
-        id: data.id,
-        ...scopeWhere(scope),
-        key: data.key,
-        description: data.description,
-        type: data.type,
-        category: data.category,
-        tags: data.tags,
-        isRequired: data.isRequired,
-        latestVersionNumber: 1,
-        currentVersionId: version.id,
-        createdByUserId: userId,
-        updatedByUserId: userId,
-      })),
-    });
-    await this.db.secretVersion.createMany({
-      data: rows.map(({ data, version }) =>
-        versionData(scope.workspaceId, data.id, 1, version, userId),
-      ),
-    });
+    // Multi row INSERTs: Prisma's createMany spends most of its time per row
+    // in the client, which dominated imports of hundreds of variables.
+    for (let start = 0; start < rows.length; start += INSERT_CHUNK) {
+      const chunk = rows.slice(start, start + INSERT_CHUNK);
+      await this.db.$executeRaw`
+        INSERT INTO "secrets" (
+          "id", "workspace_id", "project_id", "environment_id", "key", "description", "type",
+          "category", "tags", "is_required", "inheritable", "latest_version_number",
+          "current_version_id", "created_by_user_id", "updated_by_user_id", "updated_at"
+        ) VALUES ${Prisma.join(
+          chunk.map(
+            ({ data, version }) => Prisma.sql`(
+              ${data.id}::uuid, ${scope.workspaceId}::uuid, ${scope.projectId}::uuid,
+              ${scope.environmentId}::uuid, ${data.key}, ${data.description}, ${data.type}::"SecretType",
+              ${data.category}, ${data.tags}::text[], ${data.isRequired}, ${data.inheritable ?? false}, 1,
+              ${version.id}::uuid, ${userId}::uuid, ${userId}::uuid, now()
+            )`,
+          ),
+        )}`;
+      await this.db.$executeRaw`
+        INSERT INTO "secret_versions" (
+          "id", "workspace_id", "secret_id", "version_number", "ciphertext", "iv", "auth_tag",
+          "encrypted_data_key", "algorithm", "envelope_version", "encryption_key_id",
+          "kms_key_version", "origin", "change_reason", "restored_from_version_id", "created_by_user_id"
+        ) VALUES ${Prisma.join(
+          chunk.map(({ data, version }) => {
+            const v = versionData(scope.workspaceId, data.id, 1, version, userId);
+            return Prisma.sql`(
+              ${v.id}::uuid, ${v.workspaceId}::uuid, ${v.secretId}::uuid, 1, ${v.ciphertext},
+              ${v.iv}, ${v.authTag}, ${v.encryptedDataKey}, 'AES_256_GCM'::"EncryptionAlgorithm",
+              ${v.envelopeVersion ?? 1}, ${v.encryptionKeyId}::uuid, ${v.kmsKeyVersion ?? null},
+              ${v.origin ?? 'UPDATE'}::"SecretVersionOrigin", ${v.changeReason ?? null},
+              ${v.restoredFromVersionId ?? null}::uuid, ${userId}::uuid
+            )`;
+          }),
+        )}`;
+    }
   }
 
   /**

@@ -1,8 +1,11 @@
 import {
   canModifyEnvironment,
+  type EffectiveConfiguration,
   type EnvironmentAccess,
+  type EnvironmentSummary,
   type ProjectAccessList,
   type VisualColor,
+  type ValidationRule,
   type VisualIcon,
 } from '@envvault/shared';
 import type { Metadata } from 'next';
@@ -13,6 +16,8 @@ import {
   EnvironmentPermissions,
   EnvironmentProtectionSettings,
 } from '@/features/projects/environment-settings';
+import { InheritanceSettings } from '@/features/intelligence/inheritance-settings';
+import { ValidationRulesEditor } from '@/features/intelligence/validation-rules-editor';
 import { formatExpectedKeys } from '@/features/projects/expected-keys';
 import { withApi } from '@/lib/api/server-api';
 import { getEnvironment, getProject } from '@/lib/projects/server';
@@ -57,6 +62,21 @@ export default async function EnvironmentSettingsPage({
     : [];
   const canEdit = canModifyEnvironment(permissions, 'environment:update', environment.isProtected);
   const archived = environment.status === 'ARCHIVED';
+  const canList = permissions.has('secret:list');
+  const [effective, siblings, rules] = canList
+    ? await Promise.all([
+        withApi((api) => api.effectiveConfiguration(workspaceId, projectId, environmentId)).catch(
+          () => null as EffectiveConfiguration | null,
+        ),
+        withApi((api) => api.listEnvironments(workspaceId, projectId, { pageSize: 200 }))
+          .then((r) => r.items)
+          .catch(() => [] as EnvironmentSummary[]),
+        withApi((api) => api.validationRules(workspaceId, projectId, environmentId)).catch(
+          () => null as ValidationRule[] | null,
+        ),
+      ])
+    : [null, [] as EnvironmentSummary[], null];
+  const canConfigure = canEdit && !archived && project.status === 'ACTIVE';
 
   return (
     <div className="flex flex-col gap-4">
@@ -89,6 +109,20 @@ export default async function EnvironmentSettingsPage({
           }}
         />
       </SettingsSection>
+
+      {canList ? (
+        <InheritanceSettings
+          ids={ids}
+          environmentName={environment.name}
+          current={effective}
+          candidates={siblings}
+          canEdit={canConfigure}
+        />
+      ) : null}
+
+      {canList && rules ? (
+        <ValidationRulesEditor ids={ids} initial={rules} canEdit={canConfigure} />
+      ) : null}
 
       <EnvironmentProtectionSettings
         ids={ids}

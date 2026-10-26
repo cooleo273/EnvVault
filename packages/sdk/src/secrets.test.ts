@@ -124,3 +124,25 @@ describe('secrets', () => {
     expect(reveal.fetchMock.mock.calls[0]?.[0]).toBe(`${BASE}/${SECRET}/versions/${SECRET}/reveal`);
   });
 });
+
+describe('idempotency keys', () => {
+  it('sends the key on mutations of a scoped client only', async () => {
+    const { api, fetchMock } = client(jsonResponse(201, { id: SECRET, key: 'A' }));
+    await api
+      .withIdempotencyKey('key-0123456789abcdef')
+      .createSecret(WS, PROJECT, ENV, {
+        key: 'A',
+        value: 'synthetic',
+      })
+      .catch(() => undefined);
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>;
+    expect(headers['idempotency-key']).toBe('key-0123456789abcdef');
+
+    fetchMock.mockResolvedValue(jsonResponse(201, { id: SECRET, key: 'A' }));
+    await api
+      .createSecret(WS, PROJECT, ENV, { key: 'A', value: 'synthetic' })
+      .catch(() => undefined);
+    const plain = fetchMock.mock.calls[1]?.[1]?.headers as Record<string, string>;
+    expect(plain['idempotency-key']).toBeUndefined();
+  });
+});

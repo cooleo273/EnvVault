@@ -1,7 +1,8 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { createRepositories } from '@envvault/database';
+import { createRepositories, type Repositories } from '@envvault/database';
+import { currentEnvironmentPermissions } from '../auth/current-access.js';
 import { AUTH_ERROR_CODES, type PermissionKey } from '@envvault/shared';
-import type { AuthorizedEnvironment, Principal } from '../auth/principal.js';
+import type { AuthorizedEnvironment, MachinePrincipal, Principal } from '../auth/principal.js';
 import { ApiException } from '../common/api-exception.js';
 import { DatabaseService } from '../database/database.service.js';
 
@@ -11,6 +12,16 @@ export interface SecretRequestContext {
   environment: AuthorizedEnvironment;
   requestId: string | null;
 }
+
+/** A machine identity acting on an environment its grants allow. */
+export interface MachineRequestContext {
+  machine: MachinePrincipal;
+  environment: AuthorizedEnvironment;
+  requestId: string | null;
+}
+
+/** Either kind of caller, for decryption and audit (never for permission checks). */
+export type VaultContext = SecretRequestContext | MachineRequestContext;
 
 /**
  * Capability checks for secret routes, on top of the global guard.
@@ -68,6 +79,35 @@ export class SecretAuthorizationService {
       HttpStatus.FORBIDDEN,
       AUTH_ERROR_CODES.STEP_UP_REQUIRED,
       'Confirm your password to read values in a protected environment',
+    );
+  }
+
+  /**
+   * Evaluates the caller's access again inside a write transaction (`repos` is
+   * bound to it). Refuses when any permission was revoked since the request
+   * was authorized, before the transaction writes anything.
+   */
+  async recheck(
+    ctx: SecretRequestContext,
+    repos: Repositories,
+    permissions: readonly PermissionKey[],
+    action: string,
+  ): Promise<void> {
+    const current = await currentEnvironmentPermissions(
+      repos,
+      ctx.principal.userId,
+      ctx.environment.scope,
+    );
+    const missing = permissions.filter((p) => !current.has(p));
+    if (missing.length === 0) return;
+    await this.recordDenial(ctx, action, undefined, {
+      reason: 'access_changed',
+      permission: missing.join(','),
+    });
+    throw new ApiException(
+      HttpStatus.FORBIDDEN,
+      AUTH_ERROR_CODES.FORBIDDEN,
+      'Your access changed while this was being prepared. Nothing was changed.',
     );
   }
 

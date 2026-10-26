@@ -1,0 +1,36 @@
+# Protected Production deployment.
+#
+# - Runs only for version tags pushed to the repository and manual runs; never
+#   for pull requests (no pull_request or pull_request_target trigger).
+# - The job uses the GitHub `production` environment: configure required
+#   reviewers and allow only protected tags or branches to deploy there.
+# - The EnvVault trust binding for Production requires that GitHub environment,
+#   the push and workflow_dispatch events and this workflow file. EnvVault
+#   refuses a looser binding for a protected environment, and the machine
+#   identity needs a direct grant on Production.
+name: deploy-production
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency: deploy-production
+    steps:
+      - uses: actions/checkout@<full-commit-sha>
+      - name: Deploy with EnvVault configuration
+        uses: <owner>/<repo>/packages/github-action@<full-commit-sha>
+        with:
+          api-url: https://api.envvault.example.com
+          project-id: <project-id>
+          binding-id: <production-binding-id>
+          environment: production
+          command: ./scripts/deploy.sh production
+          command-timeout-minutes: 60

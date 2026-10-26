@@ -149,8 +149,10 @@ describe('change requests, approvals and audit', () => {
         db.auditEvent.delete({ where: { id: event.id } }),
         /append-only \(DELETE rejected\)/,
       );
+      // Plain TRUNCATE already fails on the audit_seals foreign key; CASCADE reaches the trigger.
+      await expect(db.$executeRawUnsafe('TRUNCATE TABLE "audit_events"')).rejects.toThrow();
       await expectTriggerRejection(
-        db.$executeRawUnsafe('TRUNCATE TABLE "audit_events"'),
+        db.$executeRawUnsafe('TRUNCATE TABLE "audit_events" CASCADE'),
         /append-only \(TRUNCATE rejected\)/,
       );
     });

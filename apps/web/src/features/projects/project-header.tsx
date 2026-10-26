@@ -43,7 +43,14 @@ export function ProjectHeader({
   const tabs = [
     { href: base, label: 'Overview' },
     { href: `${base}/environments`, label: 'Environments' },
+    { href: `${base}/compare`, label: 'Compare' },
     ...(can('project_member:read') ? [{ href: `${base}/members`, label: 'Members' }] : []),
+    ...(can('service_identity:read')
+      ? [
+          { href: `${base}/machines`, label: 'Machine identities' },
+          { href: `${base}/integrations`, label: 'Integrations' },
+        ]
+      : []),
     { href: `${base}/activity`, label: 'Activity' },
     ...(can('project:update') || can('project:archive') || can('project:delete')
       ? [{ href: `${base}/settings`, label: 'Settings' }]

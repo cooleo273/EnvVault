@@ -1,4 +1,5 @@
 import {
+  type EffectiveConfiguration,
   type EnvironmentSummary,
   PERMISSIONS,
   type PermissionKey,
@@ -10,9 +11,10 @@ import {
 import { EyeOff } from 'lucide-react';
 import type { Metadata } from 'next';
 import { EmptyState } from '@/components/feedback/states';
+import { InheritedVariables } from '@/features/intelligence/inherited-variables';
 import { VariablesPanel } from '@/features/secrets/variables-panel';
 import { withApi } from '@/lib/api/server-api';
-import { getEnvironment } from '@/lib/projects/server';
+import { environmentPath, getEnvironment } from '@/lib/projects/server';
 
 export const metadata: Metadata = { title: 'Environment' };
 
@@ -47,13 +49,14 @@ export default async function EnvironmentPage({
   let secrets: SecretList | null = null;
   let missingKeys: string[] = [];
   let environments: EnvironmentSummary[] = [];
+  let effective: EffectiveConfiguration | null = null;
   if (canList) {
     const page = Math.max(1, Number.parseInt(one(query.page) ?? '1', 10) || 1);
     const sort = SECRET_SORTS.find((s) => s === one(query.sort)) ?? 'name';
     const types = list(query.type).filter((t): t is SecretType =>
       (SECRET_TYPES as readonly string[]).includes(t),
     );
-    const [current, live, siblings] = await Promise.all([
+    const [current, live, siblings, resolved] = await Promise.all([
       withApi((api) =>
         api.listSecrets(workspaceId, projectId, environmentId, {
           page,
@@ -76,9 +79,15 @@ export default async function EnvironmentPage({
       withApi((api) => api.listEnvironments(workspaceId, projectId, { pageSize: 200 }))
         .then((r) => r.items)
         .catch(() => [] as EnvironmentSummary[]),
+      environment.baseEnvironmentId
+        ? withApi((api) => api.effectiveConfiguration(workspaceId, projectId, environmentId)).catch(
+            () => null,
+          )
+        : Promise.resolve(null),
     ]);
     secrets = current;
     environments = siblings;
+    effective = resolved;
     if (live && live.total <= live.items.length) {
       const names = new Set(live.items.map((s) => s.key));
       missingKeys = environment.expectedKeys.map((k) => k.key).filter((k) => !names.has(k));
@@ -112,6 +121,17 @@ export default async function EnvironmentPage({
             name: e.name,
             isProtected: e.isProtected,
           }))}
+          {...(effective?.base
+            ? {
+                overrides: {
+                  baseName:
+                    effective.base.state === 'no_access'
+                      ? 'Restricted environment'
+                      : effective.base.name,
+                  keys: effective.items.filter((i) => i.overridesInherited).map((i) => i.key),
+                },
+              }
+            : {})}
         />
       ) : (
         <section aria-labelledby="variables-heading" className="flex flex-col gap-2">
@@ -127,6 +147,18 @@ export default async function EnvironmentPage({
           </div>
         </section>
       )}
+
+      {effective?.base ? (
+        <InheritedVariables
+          ids={{ workspaceId, projectId, environmentId }}
+          configuration={effective}
+          baseHref={environmentPath(workspaceId, projectId, effective.base.id)}
+          canOverride={
+            environment.permissions.includes('secret:write') && environment.status === 'ACTIVE'
+          }
+          knownKeys={effective.items.map((i) => i.key)}
+        />
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section aria-labelledby="details-heading" className="rounded-lg border bg-surface">

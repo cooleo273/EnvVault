@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { isCryptoError } from '@envvault/crypto';
+import { summarizeDatabaseError } from '@envvault/database';
 import { LoggerModule } from 'nestjs-pino';
 import type { Options } from 'pino-http';
 import { APP_ENV } from '../../config/config.module.js';
@@ -21,6 +23,22 @@ export function stripQuery(url: string | undefined): string | undefined {
 }
 
 /**
+ * Error serializer. Database errors keep codes and identifiers only (their
+ * messages can quote query arguments and row values), crypto errors keep
+ * their category, and other errors keep name, message and stack but none of
+ * their own properties, which is where libraries attach request details.
+ */
+export function serializeError(error: unknown): Record<string, unknown> {
+  const database = summarizeDatabaseError(error);
+  if (database) return { ...database };
+  if (isCryptoError(error)) return { type: error.name, code: error.code };
+  if (error instanceof Error) {
+    return { type: error.name, message: error.message, stack: error.stack };
+  }
+  return { type: typeof error };
+}
+
+/**
  * Builds pino-http options. Request/response serializers are allow-lists:
  * headers (Authorization, cookies, API keys), query strings and bodies are
  * never logged.
@@ -36,6 +54,7 @@ export function buildPinoHttpOptions(env: Env): Options {
         path: stripQuery(req.url),
       }),
       res: (res: SerializedResponse) => ({ statusCode: res.statusCode }),
+      err: serializeError,
     },
     // Defence in depth in case a future serializer or log call adds these fields.
     redact: {

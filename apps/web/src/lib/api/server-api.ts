@@ -1,5 +1,11 @@
 import 'server-only';
-import { createEnvVaultClient, EnvVaultApiError, type EnvVaultClient } from '@envvault/sdk';
+import { randomUUID } from 'node:crypto';
+import {
+  createEnvVaultClient,
+  EnvVaultApiError,
+  type EnvVaultClient,
+  EnvVaultResponseValidationError,
+} from '@envvault/sdk';
 import { getAuth } from '@/lib/auth/server';
 import { serverEnv } from '@/server-env';
 
@@ -20,6 +26,9 @@ function client(): EnvVaultClient {
     baseUrl: env.API_INTERNAL_URL ?? env.NEXT_PUBLIC_API_URL,
     getAccessToken: mintAccessToken,
     timeoutMs: 8_000,
+    // One retry for reads after a dropped connection; the SDK never repeats other methods
+    // unless they carry an idempotency key, which withApiMutation already handles.
+    retries: 1,
   });
 }
 
@@ -38,6 +47,32 @@ export async function withApi<T>(call: (api: EnvVaultClient) => Promise<T>): Pro
     if (error instanceof EnvVaultApiError && error.code === 'TOKEN_REVOKED') {
       await new Promise((resolve) => setTimeout(resolve, 1_100));
       return call(client());
+    }
+    throw error;
+  }
+}
+
+/**
+ * withApi for mutations: the call carries a fresh `Idempotency-Key`, and a
+ * network failure (the request may or may not have reached the API) is
+ * retried once with the same key, so the API answers the retry from the
+ * first attempt instead of applying the change twice.
+ */
+export async function withApiMutation<T>(call: (api: EnvVaultClient) => Promise<T>): Promise<T> {
+  const key = `web-${randomUUID()}`;
+  const attempt = () => withApi((api) => call(api.withIdempotencyKey(key)));
+  try {
+    return await attempt();
+  } catch (error) {
+    if (error instanceof EnvVaultApiError && error.code === 'IDEMPOTENCY_IN_PROGRESS') {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      return attempt();
+    }
+    if (
+      !(error instanceof EnvVaultApiError) &&
+      !(error instanceof EnvVaultResponseValidationError)
+    ) {
+      return attempt();
     }
     throw error;
   }

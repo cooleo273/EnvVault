@@ -150,6 +150,7 @@ export class SecretImportService {
 
   async commit(ctx: SecretRequestContext, input: CommitInput): Promise<ImportResult> {
     await this.authorization.require(ctx, 'secret:write', 'secret.import_started');
+    await this.limiter.consume(ctx, 'import', ctx.environment.scope.environmentId);
     const scope = ctx.environment.scope;
     await this.vault.write(null, () =>
       this.vault.audit(
@@ -233,6 +234,7 @@ export class SecretImportService {
           this.database.client,
           async (tx) => {
             const repos = createRepositories(tx);
+            await this.authorization.recheck(ctx, repos, ['secret:write'], 'secret.import_started');
             await repos.secretBulk.createWithVersions(scope, creates, ctx.principal.userId);
             const updated = await repos.secretBulk.overwriteValues(
               scope,

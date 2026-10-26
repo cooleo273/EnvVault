@@ -31,6 +31,7 @@ vi.mock('@/lib/api/server-api', async () => {
   const { EnvVaultApiError: ApiError } = await import('@envvault/sdk');
   return {
     withApi: (call: (client: typeof api) => Promise<unknown>) => call(api),
+    withApiMutation: (call: (client: typeof api) => Promise<unknown>) => call(api),
     isApiError: (error: unknown, code?: string) =>
       error instanceof ApiError && (code === undefined || error.code === code),
   };

@@ -5,7 +5,11 @@ test.describe('landing page', () => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => {
-      if (message.type() === 'error') errors.push(message.text());
+      // The production CSP upgrades insecure requests; on this plain http test server an
+      // upgraded prefetch cannot connect. Over https (every real deployment) it cannot happen.
+      if (message.type() === 'error' && !message.text().includes('net::ERR_SSL_PROTOCOL_ERROR')) {
+        errors.push(message.text());
+      }
     });
 
     await page.goto('/');
@@ -42,4 +46,26 @@ test.describe('landing page', () => {
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(scrollWidth).toBeLessThanOrEqual(375);
   });
+});
+
+test.describe('production build on a phone', () => {
+  test.use({ viewport: { width: 375, height: 800 }, hasTouch: true, isMobile: true });
+
+  // The signed in drawer test runs on next dev, where the dev tools badge can cover it.
+  // This checks that the production build has no such overlay to intercept taps.
+  test('renders no development overlay', async ({ page }) => {
+    for (const path of ['/', '/login', '/signup']) {
+      await page.goto(path);
+      await expect(page.locator('nextjs-portal')).toHaveCount(0);
+      await expect(page.locator('script[data-nextjs-dev-overlay]')).toHaveCount(0);
+      const corner = await page.evaluate(() => document.elementFromPoint(24, 760)?.tagName ?? '');
+      expect(corner.toLowerCase()).not.toBe('nextjs-portal');
+    }
+  });
+});
+
+test('the API reference explains when the API cannot be reached', async ({ page }) => {
+  await page.goto('/developers/api');
+  await expect(page.getByRole('heading', { level: 1, name: 'API reference' })).toBeVisible();
+  await expect(page.getByText('The API description is not available')).toBeVisible();
 });
