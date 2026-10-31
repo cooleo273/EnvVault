@@ -177,6 +177,15 @@ Updated on 2026-10-24: `next` 16.4.0 to 16.4.1 (critical remote code execution a
 of service advisories published 2026-10-14), `@next/eslint-plugin-next` to match, and `vitest`
 4.1.11 to 4.1.12 (`@vitest/mocker`, GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp).
 
+Updated on 2026-10-31: `better-auth`, `@better-auth/core` and `@better-auth/passkey` 1.7.7 by
+override (critical GHSA-965c-763c-88jm, high GHSA-r4xp-prcw-77qf, low GHSA-44jh-23m7-hpcf).
+`@neondatabase/auth` pins 1.7.6 exactly, including in its latest release, 0.7.0-beta, so
+upgrading it would not help; remove the overrides once it ships 1.7.7 or later. `qs` 6.16.1 by
+override (GHSA-6pq8-jhm2-2vcw, denial of service in Express query strings). Accepted for now:
+`minimatch` 10.2.6 (moderate, GHSA-g3hv-75wg-m249; ESLint and Nest CLI tooling, and the fix is a
+major version) and `deepmerge` 4.3.1 (low, GHSA-gcqx-w48m-w2h4; the advisory names 4.3.2, which
+is not published).
+
 `sprintf-js` (moderate) comes from the test only Redis mock and has no patched release.
 Fixed by overrides, each inside the same major version: `body-parser` 2.4.0 (Express request
 bodies, GHSA-27r3-jxmh-p828), `multer` 2.5.0 (pinned exactly by `@nestjs/platform-express`,
