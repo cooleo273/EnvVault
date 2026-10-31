@@ -4,25 +4,25 @@ Where EnvVault stands and what comes next. "Completed" means implemented and
 tested on a branch; nothing here is production ready (see
 [security-hardening.md](security-hardening.md#10-remaining-risks-and-production-blockers)).
 
-| Phase | Scope                                                                    | Status                              |
-| ----- | ------------------------------------------------------------------------ | ----------------------------------- |
-| 1     | Authentication (Neon Auth), workspaces, members, invitations             | Completed                           |
-| 2     | Projects, custom environments, per environment access                    | Completed                           |
-| 3A    | Envelope encryption (AES-256-GCM, data keys per version)                 | Completed                           |
-| 3B    | Secrets: storage, versions, reveal, audit                                | Completed                           |
-| 3C    | .env import and export, history and rollback, bulk actions               | Completed                           |
-| 3D    | Environment comparison, inheritance, validation, snapshots               | Completed                           |
-| 3E    | Security hardening, key recovery, deployment readiness                   | Completed (on main)                 |
-| 4A    | Developer CLI: browser sign in, project linking, `run`, `pull`, `doctor` | Completed (on main)                 |
-| 4B    | Machine identities, service credentials, CI/CD authentication            | Completed (on main)                 |
-| 4C    | Public API conventions, TypeScript and Python SDKs, developer docs       | Completed (on main)                 |
-| 5A    | GitHub Actions OIDC federation and the EnvVault action                   | Completed (on main, eba51e6)        |
-| 5B    | Vercel, Docker and cloud runtime integrations                            | Implemented (on branch, not merged) |
-| 5     | Further deployment integrations (hosting platforms, cloud stores)        | Planned                             |
-| 6     | Approvals and collaboration                                              | Planned                             |
-| 7     | Monitoring and rotation                                                  | Planned                             |
-| 8     | Enterprise features                                                      | Planned                             |
-| 9     | Deployment and release                                                   | Planned                             |
+| Phase | Scope                                                                    | Status                       |
+| ----- | ------------------------------------------------------------------------ | ---------------------------- |
+| 1     | Authentication (Neon Auth), workspaces, members, invitations             | Completed                    |
+| 2     | Projects, custom environments, per environment access                    | Completed                    |
+| 3A    | Envelope encryption (AES-256-GCM, data keys per version)                 | Completed                    |
+| 3B    | Secrets: storage, versions, reveal, audit                                | Completed                    |
+| 3C    | .env import and export, history and rollback, bulk actions               | Completed                    |
+| 3D    | Environment comparison, inheritance, validation, snapshots               | Completed                    |
+| 3E    | Security hardening, key recovery, deployment readiness                   | Completed (on main)          |
+| 4A    | Developer CLI: browser sign in, project linking, `run`, `pull`, `doctor` | Completed (on main)          |
+| 4B    | Machine identities, service credentials, CI/CD authentication            | Completed (on main)          |
+| 4C    | Public API conventions, TypeScript and Python SDKs, developer docs       | Completed (on main)          |
+| 5A    | GitHub Actions OIDC federation and the EnvVault action                   | Completed (on main, eba51e6) |
+| 5B    | Vercel, Docker and cloud runtime integrations                            | Completed (on main, 41cf480) |
+| 5     | Further deployment integrations (hosting platforms, cloud stores)        | Planned                      |
+| 6     | Approvals and collaboration                                              | Planned                      |
+| 7     | Monitoring and rotation                                                  | Planned                      |
+| 8     | Enterprise features                                                      | Planned                      |
+| 9     | Deployment and release                                                   | Planned                      |
 
 ## Phase 4B (implemented)
 
@@ -102,9 +102,10 @@ Not in 5A:
 - Publishing the action.
 - OIDC from other CI providers.
 
-## Phase 5B (implemented)
+## Phase 5B (completed)
 
-On `phase-5b/deployment-integrations`:
+Merged to main at 41cf480. Tested against stand ins and synthetic secrets, not yet against live
+Vercel or real Docker.
 
 - Vercel: encrypted token connections, project linking, environment mappings
   (Development, Preview with optional branch, Production, custom environments),

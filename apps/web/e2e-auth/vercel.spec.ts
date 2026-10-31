@@ -16,6 +16,13 @@ async function confirmPasswordIfAsked(page: Page, password: string, expected: Lo
   await expect(expected).toBeVisible({ timeout: 30_000 });
 }
 
+// Toasts stack over the bottom right of the page and Sonner stops their timers while the pointer
+// is over them, so a click aimed at a button underneath keeps them on screen until the test times out.
+async function waitForToastsToClear(page: Page) {
+  await page.mouse.move(0, 0);
+  await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
+}
+
 test.describe('Vercel integration', () => {
   test('connects, links, maps and synchronises after a preview', async ({ page }) => {
     test.setTimeout(240_000);
@@ -55,6 +62,7 @@ test.describe('Vercel integration', () => {
     // The token is never shown again.
     expect(await page.content()).not.toContain(TOKEN);
 
+    await waitForToastsToClear(page);
     await card.getByRole('button', { name: 'Search' }).click();
     await card
       .getByRole('list', { name: 'Vercel projects' })
@@ -62,6 +70,7 @@ test.describe('Vercel integration', () => {
       .click();
     await confirmPasswordIfAsked(page, account.password, card.getByText(/project e2e-web/));
 
+    await waitForToastsToClear(page);
     const mappingForm = card.getByRole('form', { name: 'Add a mapping' });
     await mappingForm.getByRole('button', { name: 'Add mapping' }).click();
     const mappings = card.getByRole('list', { name: 'Environment mappings' });
@@ -71,6 +80,7 @@ test.describe('Vercel integration', () => {
       mappings.getByText(/Development → Vercel Preview/),
     );
 
+    await waitForToastsToClear(page);
     await mappings.getByRole('button', { name: 'Preview sync' }).click();
     const dialog = page.getByRole('dialog', { name: 'Synchronise to Vercel' });
     await expect(dialog.getByRole('list', { name: 'Planned changes' })).toContainText('API_TOKEN', {
