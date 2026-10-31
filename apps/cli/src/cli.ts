@@ -21,6 +21,7 @@ import {
 } from './commands/link.js';
 import { pull } from './commands/pull.js';
 import { run } from './commands/run.js';
+import { docker } from './commands/docker.js';
 import { DEFAULT_API_URL } from './config.js';
 import { CLI_VERSION, type CliIo, Context, type GlobalOptions } from './context.js';
 import { CliError, EXIT, toCliError } from './errors.js';
@@ -208,6 +209,56 @@ function build(io: CliIo, done: (code: number) => void): Command {
         });
       }),
     );
+
+  const dockerCommand = sub(program, 'docker', 'Run Docker or Docker Compose with the values');
+  for (const mode of ['run', 'compose'] as const) {
+    sub(
+      dockerCommand,
+      mode,
+      mode === 'run'
+        ? 'docker run with the values as container variables (--env KEY, values never on the command line)'
+        : 'docker compose with the values in its environment (for interpolation and Compose secrets)',
+    )
+      .usage('[options] -- <docker arguments...>')
+      .argument(mode === 'run' ? '<args...>' : '[args...]', 'Arguments for docker, after --')
+      .option('-e, --env <ref>', 'Environment name, slug or id (default: the linked default)')
+      .option('--keys <names>', 'Only pass these variables (comma separated)')
+      .option(
+        '--docker <path>',
+        'Absolute path to the docker executable (default: docker from PATH)',
+      )
+      .option('--no-inherited', 'Leave out values inherited from a base environment')
+      .option('--allow-missing', 'Run even when required variables have no value')
+      .option('-q, --quiet', 'Print nothing of its own unless something fails')
+      .passThroughOptions()
+      .action(
+        action((ctx, cmd) => {
+          const o = cmd.opts<{
+            env?: string;
+            keys?: string;
+            docker?: string;
+            inherited: boolean;
+            allowMissing?: boolean;
+            quiet?: boolean;
+          }>();
+          return docker(ctx, mode, cmd.args, {
+            ...(o.env ? { env: o.env } : {}),
+            ...(o.keys
+              ? {
+                  keys: o.keys
+                    .split(',')
+                    .map((k) => k.trim())
+                    .filter((k) => k.length > 0),
+                }
+              : {}),
+            ...(o.docker ? { docker: o.docker } : {}),
+            inherited: o.inherited,
+            allowMissing: o.allowMissing === true,
+            quiet: o.quiet === true,
+          });
+        }),
+      );
+  }
 
   sub(program, 'pull', "Write the environment's values to a plaintext .env file (prefer run)")
     .option('-e, --env <ref>', 'Environment name, slug or id (default: the linked default)')

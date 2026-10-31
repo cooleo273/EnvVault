@@ -82,7 +82,7 @@ export async function run(
   return launch(file, args, childEnv, ctx.io.cwd, spawner);
 }
 
-async function personRuntimeValues(
+export async function personRuntimeValues(
   ctx: Context,
   options: RunOptions,
 ): Promise<{ environment: { name: string }; loaded: RuntimeConfiguration }> {

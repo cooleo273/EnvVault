@@ -133,3 +133,24 @@ describe('trust binding actions', () => {
     expect((await actions.setTrustBindingEnabledAction(W, P, B, false)).ok).toBe(true);
   });
 });
+
+describe('Vercel actions', () => {
+  it('validate ids and inputs before calling the API', async () => {
+    const vercel = await import('./vercel-actions');
+    expect((await vercel.connectVercelAction(W, P, { name: 'x', token: 'short' })).ok).toBe(false);
+    expect(
+      (await vercel.connectVercelAction('nope', P, { name: 'x', token: 'a'.repeat(20) })).ok,
+    ).toBe(false);
+    expect((await vercel.linkVercelProjectAction(W, P, B, '../etc')).ok).toBe(false);
+    expect(
+      (
+        await vercel.createMappingAction(W, P, B, {
+          environmentId: E,
+          target: 'PRODUCTION',
+          gitBranch: 'main',
+        })
+      ).ok,
+    ).toBe(false);
+    expect((await vercel.runSyncAction(W, P, B, E, { planHash: 'not-a-hash' })).ok).toBe(false);
+  });
+});

@@ -20,12 +20,19 @@ async function mintAccessToken(): Promise<string | null> {
   return data.token || null;
 }
 
-function client(): EnvVaultClient {
+// The API finishes a request after the web app stops waiting, so a limit shorter than a slow
+// write reports a failure for a change that was made, and trying again repeats it.
+const API_TIMEOUT_MS = 30_000;
+
+/** A Vercel sync writes one variable per request, up to the plan limit of 500. */
+export const SYNC_TIMEOUT_MS = 180_000;
+
+function client(timeoutMs: number): EnvVaultClient {
   const env = serverEnv();
   return createEnvVaultClient({
     baseUrl: env.API_INTERNAL_URL ?? env.NEXT_PUBLIC_API_URL,
     getAccessToken: mintAccessToken,
-    timeoutMs: 8_000,
+    timeoutMs,
     // One retry for reads after a dropped connection; the SDK never repeats other methods
     // unless they carry an idempotency key, which withApiMutation already handles.
     retries: 1,
@@ -40,13 +47,16 @@ function client(): EnvVaultClient {
  * can be rejected with TOKEN_REVOKED. Such a call is retried once with a
  * newly minted token after the boundary has passed.
  */
-export async function withApi<T>(call: (api: EnvVaultClient) => Promise<T>): Promise<T> {
+export async function withApi<T>(
+  call: (api: EnvVaultClient) => Promise<T>,
+  timeoutMs: number = API_TIMEOUT_MS,
+): Promise<T> {
   try {
-    return await call(client());
+    return await call(client(timeoutMs));
   } catch (error) {
     if (error instanceof EnvVaultApiError && error.code === 'TOKEN_REVOKED') {
       await new Promise((resolve) => setTimeout(resolve, 1_100));
-      return call(client());
+      return call(client(timeoutMs));
     }
     throw error;
   }
@@ -95,6 +105,6 @@ export async function clientWithCurrentToken(): Promise<EnvVaultClient | null> {
   return createEnvVaultClient({
     baseUrl: env.API_INTERNAL_URL ?? env.NEXT_PUBLIC_API_URL,
     getAccessToken: () => Promise.resolve(token),
-    timeoutMs: 8_000,
+    timeoutMs: API_TIMEOUT_MS,
   });
 }

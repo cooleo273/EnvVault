@@ -62,8 +62,10 @@ model User {
 
   cliDeviceGrants      CliDeviceGrant[]
   cliSessions          CliSession[]
-  oidcPoliciesDisabled OidcTrustPolicy[] @relation("OidcTrustPolicyDisabledBy")
-  oidcPoliciesUpdated  OidcTrustPolicy[] @relation("OidcTrustPolicyUpdatedBy")
+  oidcPoliciesDisabled OidcTrustPolicy[]               @relation("OidcTrustPolicyDisabledBy")
+  oidcPoliciesUpdated  OidcTrustPolicy[]               @relation("OidcTrustPolicyUpdatedBy")
+  integrationMappings  IntegrationEnvironmentMapping[] @relation("IntegrationMappingCreatedBy")
+  integrationSyncJobs  IntegrationSyncJob[]            @relation("IntegrationSyncJobRequestedBy")
 
   @@index([email])
   @@index([lastWorkspaceId])

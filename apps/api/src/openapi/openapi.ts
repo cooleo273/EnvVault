@@ -62,6 +62,8 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   CLI: 'Browser approved CLI sign in and CLI sessions.',
   'Machine identities': 'Machine identities, service credentials and grants, managed by people.',
   Machine: 'Routes for machine identities: token exchange, environments and runtime values.',
+  Integrations:
+    'Deployment integrations (Vercel): connections, environment mappings, previewed synchronisation and history.',
   'GitHub Actions':
     'Trust bindings that let GitHub Actions workflows authenticate as a machine identity with OIDC.',
 };

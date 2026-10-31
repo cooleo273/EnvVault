@@ -26,7 +26,7 @@ export interface KeyMetadata extends KeyReference {
 }
 
 /** What a data key is for. Bound into the wrapping AAD (domain separation). */
-export type DataKeyPurpose = 'secret-value';
+export type DataKeyPurpose = 'secret-value' | 'integration-credential';
 
 /**
  * Context a wrapped data key is bound to. Wrapping authenticates these fields,

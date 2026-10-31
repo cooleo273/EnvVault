@@ -86,6 +86,22 @@ What `run` cannot protect against:
 - Values sent to the API leave EnvVault's control once loaded: crash reports,
   debug logs and framework error pages in your app can still print them.
 
+### `envvault docker run` and `envvault docker compose`
+
+```bash
+envvault docker run --env development -- --rm -p 3000:3000 my-app:latest
+envvault docker compose --env development -- up --build
+```
+
+Load the environment like `run` and start Docker with the values in the docker
+CLI's environment only: `docker run` gets `--env KEY` for each variable (names,
+never values, on the command line), Compose uses them as the Compose file says,
+including `secrets:` with an `environment:` source. `--keys` limits the
+variables, `--docker` names the executable. Names that would reconfigure Docker
+(`DOCKER_*`, `COMPOSE_*`, `PATH` and similar) are never passed. Container
+variables are visible to `docker inspect`; see
+[integrations/docker.md](integrations/docker.md).
+
 ### `envvault pull`
 
 ```bash

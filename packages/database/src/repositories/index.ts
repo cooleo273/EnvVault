@@ -2,6 +2,7 @@ import { AuditSealRepository } from './audit-seal.repository.js';
 import { CliAuthRepository } from './cli-auth.repository.js';
 import { MachineIdentityRepository } from './machine-identity.repository.js';
 import { OidcTrustRepository } from './oidc-trust.repository.js';
+import { IntegrationRepository } from './integration.repository.js';
 import { IdempotencyRepository } from './idempotency.repository.js';
 import { MaintenanceJobRepository, RetentionRepository } from './retention.repository.js';
 import { KeyMaintenanceRepository } from './key-maintenance.repository.js';
@@ -40,6 +41,14 @@ export {
   type NewServiceCredential,
   type ServiceCredentialRecord,
 } from './machine-identity.repository.js';
+export {
+  IntegrationRepository,
+  type IntegrationConnectionRecord,
+  type ManagedVariableRecord,
+  type MappingRecord,
+  type StoredCredential,
+  type SyncJobRecord,
+} from './integration.repository.js';
 export {
   OidcTrustRepository,
   type NewOidcBinding,
@@ -194,6 +203,7 @@ export function createRepositories(db: DbClient) {
     invitations: new InvitationRepository(db),
     machineIdentities: new MachineIdentityRepository(db),
     oidcTrust: new OidcTrustRepository(db),
+    integrations: new IntegrationRepository(db),
     memberships: new MembershipRepository(db),
     projects: new ProjectRepository(db),
     projectMembers: new ProjectMemberRepository(db),

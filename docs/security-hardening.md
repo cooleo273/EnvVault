@@ -325,3 +325,35 @@ Remaining risks:
 4. Commands run by the action can read and leak the values they receive;
    masking matches exact strings only.
 5. Docker isolated runner tests were not run in this phase (no Docker daemon).
+
+## 14. Phase 5B: deployment integrations
+
+New surfaces: a stored provider token, values copied outside EnvVault's
+encryption boundary, an outbound client to Vercel, and Docker helpers.
+
+| Risk                                                           | Control                                                                                                                                                               | Test                                                |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Provider token theft from the database                         | Envelope encrypted with the workspace keyring, own AAD domain and data key purpose, bound to workspace and connection; never returned or logged; erased on disconnect | `secret-cipher.test.ts`, `integrations.int-spec.ts` |
+| Integration managers reading values                            | Sync needs `secret:read` and `secret:export` on the environment; preview shows keys only                                                                              | `integrations.int-spec.ts`                          |
+| Overwriting or deleting Vercel variables EnvVault does not own | Only managed variables are changed or removed; unmanaged and shared ones need explicit overwrite or are never touched; removal is opt in                              | `sync-plan.spec.ts`, `integrations.int-spec.ts`     |
+| Stale confirmation                                             | Runs carry the preview's plan hash; any change refuses the run                                                                                                        | `integrations.int-spec.ts`                          |
+| Partial writes                                                 | One variable per request, outcome per key, managed state recorded per write, safe retry; no atomicity claimed                                                         | `integrations.int-spec.ts`                          |
+| Concurrent runs                                                | Unique partial index: one queued or running job per mapping; stale jobs released after 15 minutes                                                                     | `integrations.int-spec.ts`                          |
+| Protected and Production targets                               | Explicit confirmation required by the API; direct grants for protected exports                                                                                        | `integrations.int-spec.ts`                          |
+| Provider errors leaking values                                 | Fixed error codes only; provider bodies never stored or shown; job summaries hold keys and outcomes                                                                   | `integrations.int-spec.ts`                          |
+| Values on command lines or in images                           | `envvault docker run` passes `--env KEY` only; values travel in the docker CLI environment; Dockerfile guidance forbids `ARG`, `ENV` and build args for secrets       | `docker.test.ts`, `cli-docker.int-spec.ts`          |
+| Values redirecting Docker                                      | `DOCKER_*`, `COMPOSE_*`, `BUILDKIT_*`, loader and path variables are never passed                                                                                     | `docker.test.ts`, `cli-docker.int-spec.ts`          |
+| Workers running on revoked access                              | Example workers stop at the next refresh after revocation and fail closed at startup                                                                                  | `cloud-runtime.int-spec.ts`                         |
+
+Remaining risks:
+
+1. Values in Vercel are outside EnvVault's control; revoking access in EnvVault
+   does not remove copies already in Vercel or in running deployments.
+2. A Vercel token reaches every project of its team; Vercel offers no project
+   scoped tokens.
+3. Integration credentials are not yet covered by the key rewrap tooling
+   (`pnpm ops rewrap`); after a keyring rotation they keep working (old key
+   versions stay for decryption) but are not re-wrapped.
+4. Not tested against the live Vercel API or a real Docker daemon; see the
+   manual acceptance steps in [integrations/vercel.md](integrations/vercel.md)
+   and [integrations/docker.md](integrations/docker.md).

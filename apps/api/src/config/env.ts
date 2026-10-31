@@ -193,6 +193,13 @@ export const envSchema = z
     MACHINE_TOKEN_RATE_LIMIT: z.coerce.number().int().min(1).max(1000).default(30),
     /** GitHub OIDC exchanges per repository per minute (matrix builds exchange once per job). */
     OIDC_TOKEN_RATE_LIMIT: z.coerce.number().int().min(1).max(5000).default(120),
+    /**
+     * Vercel REST API origin. https only; plain http is accepted only for a
+     * loopback mock with NODE_ENV=test.
+     */
+    VERCEL_API_URL: baseUrlSchema.default('https://api.vercel.com'),
+    /** Provider synchronisations per person per minute (each one writes many variables). */
+    INTEGRATION_SYNC_RATE_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
     /** Minimum seconds between JWKS refetches triggered by an unknown key id. */
     OIDC_JWKS_COOLDOWN_SECONDS: z.coerce.number().int().min(0).max(600).default(30),
     /**
@@ -287,6 +294,16 @@ export const envSchema = z
           code: 'custom',
           path: ['ENCRYPTION_LOCAL_KEYRING'],
           message: 'is not allowed in production; mount the keyring as a read only file',
+        });
+      }
+    }
+    {
+      const testMock = env.NODE_ENV === 'test' && isLocalHost(env.VERCEL_API_URL);
+      if (!env.VERCEL_API_URL.startsWith('https://') && !testMock) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['VERCEL_API_URL'],
+          message: 'must be an https URL (http only for a local mock in tests)',
         });
       }
     }

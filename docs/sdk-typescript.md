@@ -89,6 +89,15 @@ managed with `listOidcTrustBindings`, `createOidcTrustBinding`,
 `oidcTrustBindingAttempts`. See
 [integrations/github-oidc.md](integrations/github-oidc.md).
 
+### Deployment integrations
+
+`listIntegrations`, `connectVercel`, `integration`, `replaceIntegrationToken`,
+`checkIntegration`, `setIntegrationEnabled`, `disconnectIntegration`,
+`vercelProjects`, `linkVercelProject`, `vercelCustomEnvironments`,
+`integrationMappings`, `createIntegrationMapping`, `deleteIntegrationMapping`,
+`previewSync`, `runSync` and `syncJobs` (people only). `runSync` is never
+retried automatically; see [integrations/vercel.md](integrations/vercel.md).
+
 ## 3. People and the CLI
 
 ```ts

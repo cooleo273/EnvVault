@@ -1,0 +1,14 @@
+{
+  "name": "@envvault/example-node-worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Example: a long running worker that refreshes its EnvVault configuration and stops when access is revoked",
+  "type": "module",
+  "scripts": {
+    "start": "node worker.mjs",
+    "typecheck": "node --check worker.mjs"
+  },
+  "dependencies": {
+    "@envvault/sdk": "workspace:*"
+  }
+}

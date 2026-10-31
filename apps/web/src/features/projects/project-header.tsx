@@ -46,10 +46,10 @@ export function ProjectHeader({
     { href: `${base}/compare`, label: 'Compare' },
     ...(can('project_member:read') ? [{ href: `${base}/members`, label: 'Members' }] : []),
     ...(can('service_identity:read')
-      ? [
-          { href: `${base}/machines`, label: 'Machine identities' },
-          { href: `${base}/integrations`, label: 'Integrations' },
-        ]
+      ? [{ href: `${base}/machines`, label: 'Machine identities' }]
+      : []),
+    ...(can('service_identity:read') || can('integration:read')
+      ? [{ href: `${base}/integrations`, label: 'Integrations' }]
       : []),
     { href: `${base}/activity`, label: 'Activity' },
     ...(can('project:update') || can('project:archive') || can('project:delete')

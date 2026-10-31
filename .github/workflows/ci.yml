@@ -106,10 +106,10 @@ jobs:
         run: python -m pip install -e ".[dev]"
 
       - name: Lint and format
-        run: ruff check src tests ../../examples/python-script ../../examples/python-service && ruff format --check src tests
+        run: ruff check src tests ../../examples/python-script ../../examples/python-service ../../examples/python-worker && ruff format --check src tests
 
       - name: Type check
-        run: mypy && mypy --strict ../../examples/python-script/load_config.py ../../examples/python-service/service.py
+        run: mypy && mypy --strict ../../examples/python-script/load_config.py ../../examples/python-service/service.py ../../examples/python-worker/worker.py
 
       - name: Unit tests
         run: python -m pytest

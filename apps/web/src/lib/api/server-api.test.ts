@@ -3,6 +3,7 @@ import { EnvVaultApiError } from '@envvault/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const keys: string[] = [];
+const timeouts: (number | undefined)[] = [];
 const calls = vi.fn<() => Promise<string>>();
 
 vi.mock('server-only', () => ({}));
@@ -17,20 +18,32 @@ vi.mock('@envvault/sdk', async (importOriginal) => {
   const scoped = { createSecret: () => calls() };
   return {
     ...actual,
-    createEnvVaultClient: () => ({
-      withIdempotencyKey: (key: string) => {
-        keys.push(key);
-        return scoped;
-      },
-    }),
+    createEnvVaultClient: (options: { timeoutMs?: number }) => {
+      timeouts.push(options.timeoutMs);
+      return {
+        withIdempotencyKey: (key: string) => {
+          keys.push(key);
+          return scoped;
+        },
+      };
+    },
   };
 });
 
-const { withApiMutation } = await import('./server-api');
+const { SYNC_TIMEOUT_MS, withApi, withApiMutation } = await import('./server-api');
 
 beforeEach(() => {
   keys.length = 0;
+  timeouts.length = 0;
   calls.mockReset();
+});
+
+describe('withApi', () => {
+  it('waits long enough for a slow write, and longer for a sync', async () => {
+    await withApi(() => Promise.resolve('done'));
+    await withApi(() => Promise.resolve('done'), SYNC_TIMEOUT_MS);
+    expect(timeouts).toEqual([30_000, SYNC_TIMEOUT_MS]);
+  });
 });
 
 describe('withApiMutation', () => {

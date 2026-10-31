@@ -14,6 +14,7 @@ import { defineConfig, devices } from '@playwright/test';
 const WEB_PORT = 3200;
 const API_PORT = 4100;
 const STANDIN_PORT = 4410;
+const VERCEL_STANDIN_PORT = 4420;
 
 const webOrigin = `http://localhost:${String(WEB_PORT)}`;
 const authBaseUrl = `http://localhost:${String(STANDIN_PORT)}/neondb/auth`;
@@ -64,7 +65,7 @@ export default defineConfig({
       name: 'auth-flows',
       dependencies: ['warmup'],
       testMatch:
-        /(auth-flows|collaboration|secrets|secret-transfers|environment-intelligence|machines|developers|github-actions)\.spec\.ts/,
+        /(auth-flows|collaboration|secrets|secret-transfers|environment-intelligence|machines|developers|github-actions|vercel)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
@@ -79,6 +80,14 @@ export default defineConfig({
       command: 'node e2e/support/neon-auth-standin.mjs',
       url: `http://localhost:${String(STANDIN_PORT)}/__test/health`,
       env: { STANDIN_PORT: String(STANDIN_PORT), STANDIN_TRUSTED_ORIGINS: webOrigin },
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+    {
+      // EnvVault's Vercel calls go here, never to the real Vercel.
+      command: 'node e2e/support/vercel-standin.mjs',
+      url: `http://localhost:${String(VERCEL_STANDIN_PORT)}/__test/health`,
+      env: { VERCEL_STANDIN_PORT: String(VERCEL_STANDIN_PORT) },
       reuseExistingServer: false,
       timeout: 60_000,
     },
@@ -99,6 +108,7 @@ export default defineConfig({
         RATE_LIMIT_MAX: '10000',
         ENCRYPTION_PROVIDER: 'local',
         ENCRYPTION_LOCAL_KEYRING: e2eKeyring,
+        VERCEL_API_URL: `http://localhost:${String(VERCEL_STANDIN_PORT)}`,
       },
       reuseExistingServer: false,
       timeout: 60_000,

@@ -27,6 +27,7 @@ import { IntelligenceModule } from './intelligence/intelligence.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { RetentionModule } from './retention/retention.module.js';
 import { CliAuthModule } from './cli-auth/cli-auth.module.js';
+import { IntegrationsModule } from './integrations/integrations.module.js';
 import { MachineModule } from './machine/machine.module.js';
 import { DeprecationInterceptor } from './common/deprecation.js';
 import { SecretsModule } from './secrets/secrets.module.js';
@@ -88,6 +89,7 @@ export class AppModule {
         RetentionModule,
         CliAuthModule,
         MachineModule,
+        IntegrationsModule,
       ],
       providers: [
         // Global guards run in this order: address limit, authenticate, user limit, authorize.

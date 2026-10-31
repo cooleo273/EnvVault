@@ -167,6 +167,45 @@ export function assertSecretEnvelope(value: unknown): asserts value is SecretEnv
   }
 }
 
+/**
+ * Identifies one integration connection's provider credential. Bound to the
+ * ciphertext and the wrapped data key under their own AAD domain and data key
+ * purpose, so a credential envelope can never be presented as a secret value
+ * (or the reverse), or moved to another workspace or connection.
+ */
+export interface CredentialEncryptionContext {
+  readonly workspaceId: string;
+  readonly connectionId: string;
+}
+
+function credentialFields(
+  context: CredentialEncryptionContext,
+): readonly (readonly [string, string])[] {
+  const record: unknown = context;
+  if (typeof record !== 'object' || record === null) {
+    throw new CryptoInputError('Encryption context is required');
+  }
+  return (['workspaceId', 'connectionId'] as const).map((name) => {
+    const value: unknown = (record as Record<string, unknown>)[name];
+    if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+      throw new CryptoInputError(`Encryption context field ${name} must be a lowercase UUID`);
+    }
+    return [name, value] as const;
+  });
+}
+
+function credentialAad(formatVersion: number, context: CredentialEncryptionContext): Buffer {
+  return encodeAad(AAD_DOMAINS.integrationCredential, [
+    ['formatVersion', String(formatVersion)],
+    ['algorithm', SECRET_ENVELOPE_ALGORITHM],
+    ...credentialFields(context),
+  ]);
+}
+
+function credentialKeyContext(context: CredentialEncryptionContext): DataKeyContext {
+  return { purpose: 'integration-credential', fields: credentialFields(context) };
+}
+
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 
 /**
@@ -219,6 +258,61 @@ export class SecretCipher {
       throw new KeyNotFoundError();
     }
     const dataKey = await this.provider.unwrapDataKey(envelope, dataKeyContext(context));
+    let plaintext: Buffer | undefined;
+    try {
+      plaintext = dataKey.use((key) => open(key, envelope, aad));
+      return UTF8.decode(plaintext);
+    } catch (error) {
+      if (error instanceof TypeError) throw new MalformedEnvelopeError();
+      throw error;
+    } finally {
+      plaintext?.fill(0);
+      dataKey.destroy();
+    }
+  }
+
+  /** Same envelope scheme as secret values, for an integration's provider credential. */
+  async encryptCredential(
+    plaintext: string,
+    context: CredentialEncryptionContext,
+  ): Promise<SecretEnvelope> {
+    const bytes = encodePlaintext(plaintext);
+    try {
+      const aad = credentialAad(SECRET_ENVELOPE_FORMAT_VERSION, context);
+      const { dataKey, wrapped } = await this.provider.generateDataKey(
+        credentialKeyContext(context),
+      );
+      try {
+        const sealed = dataKey.use((key) => seal(key, bytes, aad));
+        return {
+          formatVersion: SECRET_ENVELOPE_FORMAT_VERSION,
+          algorithm: SECRET_ENVELOPE_ALGORITHM,
+          providerId: wrapped.providerId,
+          keyId: wrapped.keyId,
+          keyVersion: wrapped.keyVersion,
+          wrappedKey: wrapped.wrappedKey,
+          nonce: sealed.nonce,
+          ciphertext: sealed.ciphertext,
+          tag: sealed.tag,
+        };
+      } finally {
+        dataKey.destroy();
+      }
+    } finally {
+      bytes.fill(0);
+    }
+  }
+
+  async decryptCredential(
+    envelope: SecretEnvelope,
+    context: CredentialEncryptionContext,
+  ): Promise<string> {
+    assertSecretEnvelope(envelope);
+    const aad = credentialAad(envelope.formatVersion, context);
+    if (envelope.providerId !== this.provider.providerId) {
+      throw new KeyNotFoundError();
+    }
+    const dataKey = await this.provider.unwrapDataKey(envelope, credentialKeyContext(context));
     let plaintext: Buffer | undefined;
     try {
       plaintext = dataKey.use((key) => open(key, envelope, aad));

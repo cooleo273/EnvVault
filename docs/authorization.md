@@ -268,8 +268,9 @@ so the same rules apply:
 | Create, change, enable, delete | `service_identity:manage`, a recent step up, and the caller's own permissions on every bound environment for what the binding's scopes unlock (`GRANT_EXCEEDS_AUTHORITY`) |
 | Disable                        | `service_identity:manage` (narrows access, no step up)                                                                                                                    |
 
-`integration:manage` is not used: no built in role holds it, and a binding is a
-machine credential rather than a sync integration.
+`integration:manage` is not used for bindings: a binding is a machine credential
+rather than a sync integration (Phase 5B gives that permission to admin roles for
+deployment integrations).
 
 A binding can only name environments the identity already has a grant on, so
 it cannot widen what the identity reaches. A binding that reaches a protected
@@ -280,3 +281,28 @@ direct grant there. Machine tokens issued through a binding are evaluated by
 environments; machine tokens cannot call the binding routes
 (`MACHINE_TOKEN_NOT_ALLOWED`). See
 [integrations/github-oidc.md](integrations/github-oidc.md).
+
+## 12. Phase 5B: deployment integrations
+
+`integration:read` and `integration:manage` (in the catalog since Phase 1) are now
+used, and are project permissions: they pass from workspace roles to projects like
+`service_identity:*`. Role changes (run `pnpm db:sync-catalog`):
+
+| Role                   | Change                                                      |
+| ---------------------- | ----------------------------------------------------------- |
+| Workspace Owner, Admin | Gain `integration:read` and `integration:manage`            |
+| Project Admin          | Gains `integration:manage` (already had `integration:read`) |
+
+| Action                                                        | Requires                                                                                         |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| View connections, mappings, history                           | `integration:read`                                                                               |
+| Preview a synchronisation                                     | `integration:read` and `secret:list` on the environment                                          |
+| Connect, replace token, link, add mapping, enable, disconnect | `integration:manage` and a recent step up                                                        |
+| Disable, check, remove a mapping                              | `integration:manage`                                                                             |
+| Synchronise (copy values to Vercel)                           | `integration:manage`, a recent step up, and `secret:read` and `secret:export` on the environment |
+
+Managing an integration never implies access to values: copying values out is an
+export, with the export rules (direct grants on protected environments). Refusals
+are audited as `integration.sync_refused`. Protected environments and Vercel
+Production also need an explicit confirmation in the request. See
+[integrations/vercel.md](integrations/vercel.md).

@@ -1,7 +1,7 @@
 # EnvVault Architecture
 
-> Status: **Phase 5A: GitHub Actions OIDC federation and the EnvVault action** (on top of
-> the public API and SDKs in 4C, machine identities in 4B, the CLI in 4A, and the secrets,
+> Status: **Phase 5B: Vercel, Docker and cloud runtime integrations** (on top of GitHub
+> Actions OIDC in 5A, the public API and SDKs in 4C, machine identities in 4B, the CLI in 4A, and the secrets,
 > encryption, projects and authorization layers of Phases 1 to 3). This document describes the architecture as
 > implemented today and the boundaries that later phases build on. Sections marked
 > _Planned_ describe intended designs that are not implemented yet.
@@ -294,6 +294,30 @@ GitHub jobs authenticate without a stored credential:
 Details: [integrations/github-oidc.md](integrations/github-oidc.md),
 [integrations/github-actions.md](integrations/github-actions.md).
 
+### 4.11 Deployment integrations (Phase 5B)
+
+- **Connections** reuse `integration_connections`: the provider token is envelope
+  encrypted with the workspace keyring through `SecretCipher.encryptCredential`
+  (domain `envvault/integration-credential`, data key purpose
+  `integration-credential`, bound to workspace and connection id).
+- **Mappings** (`integration_environment_mappings`) tie an EnvVault environment to a
+  Vercel target, branch or custom environment; **managed variables**
+  (`integration_managed_variables`) record the Vercel variables EnvVault wrote, with
+  the provider `updatedAt` and the EnvVault version pushed.
+- **Planning** (`sync-plan.ts`) compares EnvVault versions, Vercel listings (no
+  values) and managed records; the plan hash binds the confirmation.
+- **Running** (`IntegrationSyncService`) authorizes like an export, decrypts through
+  the vault, records `integration.values_exported`, writes one variable per request
+  and stores per key outcomes in `integration_sync_jobs.summary`.
+- **Client** (`VercelClient`): bounded requests (10 s, 5 MiB, no redirects), fixed
+  error codes, no decryption requests; base URL `VERCEL_API_URL`.
+- **Docker**: `envvault docker run|compose` in the CLI; cloud runtimes use the SDKs
+  (`examples/node-worker`, `examples/python-worker`, `examples/container`).
+
+Details: [integrations/vercel.md](integrations/vercel.md),
+[integrations/docker.md](integrations/docker.md),
+[integrations/cloud-runtime.md](integrations/cloud-runtime.md).
+
 ## 5. Web (apps/web)
 
 See **[design-system.md](design-system.md)** for tokens, components and module guidelines.
@@ -445,6 +469,8 @@ See [authentication.md](authentication.md) for the full design.
 | Examples | Node, Python and CI examples against the real API | `apps/api/test/examples.int-spec.ts` |
 | OIDC federation | Vitest, real API and Postgres, local OIDC issuer with real signed tokens | `apps/api/test/oidc.int-spec.ts` |
 | GitHub Action | Unit tests; the bundled action run as a runner would against the real API | `packages/github-action/src/*.test.ts`, `apps/api/test/github-action.int-spec.ts` |
+| Vercel integration | Real API and Postgres against a mock Vercel API | `apps/api/test/integrations.int-spec.ts`, `apps/api/src/integrations/sync-plan.spec.ts` |
+| Docker and cloud runtimes | Built CLI with a fake docker executable; example workers against the real API | `apps/api/test/cli-docker.int-spec.ts`, `apps/api/test/cloud-runtime.int-spec.ts` |
 
 The API e2e tests build the real `AppModule` and apply the same `configureApp()` as
 production, replacing only the `DatabaseService`, so they need no running database.
@@ -499,7 +525,10 @@ The `verify` job also fails when `packages/github-action/dist` differs from a fr
   the public API, generates its access metadata from the guards, extends the TypeScript SDK,
   adds the Python SDK, examples and the `/developers/api` reference page. Neither SDK is
   published. Phase 5A adds GitHub Actions OIDC trust bindings, the EnvVault action and the
-  project Integrations page; the action is not published.
+  project Integrations page; the action is not published. Phase 5B adds the Vercel
+  integration (manual, previewed synchronisation), `envvault docker run|compose`
+  and cloud runtime worker examples; it is not validated against live Vercel or a
+  Docker daemon.
 - Readiness is evaluated on request; snapshots are manual (no schedules or retention).
 - Protected-environment approvals are modelled (`required_approvals`, change request
   tables) but not enforced; no approval workflow runs yet.

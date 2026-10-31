@@ -332,3 +332,45 @@ describe('SecretCipher', () => {
     ).rejects.toThrow(DecryptionError);
   });
 });
+
+describe('SecretCipher integration credentials', () => {
+  const credential = 'synthetic-provider-token-91ce';
+
+  it('round trips and binds the workspace and connection', async () => {
+    const cipher = new SecretCipher(memoryProvider().provider);
+    const context = { workspaceId: randomUUID(), connectionId: randomUUID() };
+    const envelope = await cipher.encryptCredential(credential, context);
+    expect(envelope.ciphertext.toString('utf8')).not.toContain(credential);
+    await expect(cipher.decryptCredential(envelope, context)).resolves.toBe(credential);
+    await expect(
+      cipher.decryptCredential(envelope, { ...context, connectionId: randomUUID() }),
+    ).rejects.toBeInstanceOf(DecryptionError);
+    await expect(
+      cipher.decryptCredential(envelope, { ...context, workspaceId: randomUUID() }),
+    ).rejects.toBeInstanceOf(DecryptionError);
+  });
+
+  it('keeps credentials and secret values in separate domains', async () => {
+    const cipher = new SecretCipher(memoryProvider().provider);
+    const secretContext = syntheticContext();
+    const secret = await cipher.encryptSecret(SYNTHETIC_SECRET, secretContext);
+    const credentialContext = {
+      workspaceId: secretContext.workspaceId,
+      connectionId: secretContext.secretId,
+    };
+    await expect(cipher.decryptCredential(secret, credentialContext)).rejects.toBeInstanceOf(
+      DecryptionError,
+    );
+    const sealed = await cipher.encryptCredential(credential, credentialContext);
+    await expect(cipher.decryptSecret(sealed, secretContext)).rejects.toBeInstanceOf(
+      DecryptionError,
+    );
+  });
+
+  it('rejects malformed contexts', async () => {
+    const cipher = new SecretCipher(memoryProvider().provider);
+    await expect(
+      cipher.encryptCredential(credential, { workspaceId: 'x', connectionId: randomUUID() }),
+    ).rejects.toBeInstanceOf(CryptoInputError);
+  });
+});

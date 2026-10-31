@@ -313,6 +313,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
 
+  examples/node-worker:
+    dependencies:
+      '@envvault/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+
   packages/config:
     dependencies:
       '@eslint/js':

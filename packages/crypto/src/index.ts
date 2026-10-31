@@ -9,6 +9,7 @@ export {
   SECRET_ENVELOPE_FORMAT_VERSION,
   SecretCipher,
   type RewrapResult,
+  type CredentialEncryptionContext,
   type SecretEncryptionContext,
   type SecretEnvelope,
 } from './secret-cipher.js';
