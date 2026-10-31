@@ -29,3 +29,11 @@ overrides:
   'multer@>=2.0.0 <2.5.0': 2.5.0
   'undici@>=8.0.0 <8.12.2': 8.12.2
   'fast-uri@>=3.0.0 <3.1.9': 3.1.9
+  # Neon Auth pins Better Auth to 1.7.6, including in its latest release, 0.7.0-beta
+  # (GHSA-965c-763c-88jm, GHSA-r4xp-prcw-77qf, GHSA-44jh-23m7-hpcf). Core and passkey are pinned
+  # alongside it and must match. Drop these once Neon Auth ships 1.7.7 or later.
+  'better-auth@<1.7.7': 1.7.7
+  '@better-auth/core@<1.7.7': 1.7.7
+  '@better-auth/passkey@<1.7.7': 1.7.7
+  # Express query strings (GHSA-6pq8-jhm2-2vcw, denial of service).
+  'qs@>=6.7.0 <6.16.1': 6.16.1

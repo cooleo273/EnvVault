@@ -33,6 +33,8 @@ export const PROJECT_PERMISSIONS: ReadonlySet<PermissionKey> = new Set<Permissio
   'environment:create',
   'service_identity:read',
   'service_identity:manage',
+  'integration:read',
+  'integration:manage',
 ]);
 
 /** Permissions evaluated per environment. */

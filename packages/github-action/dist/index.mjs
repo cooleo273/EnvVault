@@ -20,8 +20,8 @@ var __commonJS = (cb, mod) => function __require2() {
   }
 };
 var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
+  for (var name2 in all)
+    __defProp(target, name2, { get: all[name2], enumerable: true });
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
@@ -1376,15 +1376,15 @@ var require_util = __commonJS({
         size: m[3] ? parseInt(m[3]) : null
       } : null;
     }
-    function addListener(obj, name, listener) {
+    function addListener(obj, name2, listener) {
       const listeners = obj[kListeners] ??= [];
-      listeners.push([name, listener]);
-      obj.on(name, listener);
+      listeners.push([name2, listener]);
+      obj.on(name2, listener);
       return obj;
     }
     function removeAllListeners(obj) {
-      for (const [name, listener] of obj[kListeners] ?? []) {
-        obj.removeListener(name, listener);
+      for (const [name2, listener] of obj[kListeners] ?? []) {
+        obj.removeListener(name2, listener);
       }
       obj[kListeners] = null;
     }
@@ -3552,9 +3552,9 @@ var require_data_url = __commonJS({
       assert2(mimeType !== "failure");
       const { parameters, essence } = mimeType;
       let serialization = essence;
-      for (let [name, value] of parameters.entries()) {
+      for (let [name2, value] of parameters.entries()) {
         serialization += ";";
-        serialization += name;
+        serialization += name2;
         serialization += "=";
         if (!HTTP_TOKEN_CODEPOINTS.test(value)) {
           value = value.replace(/(\\|")/g, "\\$1");
@@ -4002,11 +4002,11 @@ var require_webidl = __commonJS({
       }
       return V;
     };
-    webidl.converters.TypedArray = function(V, T, prefix, name, opts) {
+    webidl.converters.TypedArray = function(V, T, prefix, name2, opts) {
       if (webidl.util.Type(V) !== "Object" || !types.isTypedArray(V) || V.constructor.name !== T.name) {
         throw webidl.errors.conversionFailed({
           prefix,
-          argument: `${name} ("${webidl.util.Stringify(V)}")`,
+          argument: `${name2} ("${webidl.util.Stringify(V)}")`,
           types: [T.name]
         });
       }
@@ -4024,11 +4024,11 @@ var require_webidl = __commonJS({
       }
       return V;
     };
-    webidl.converters.DataView = function(V, prefix, name, opts) {
+    webidl.converters.DataView = function(V, prefix, name2, opts) {
       if (webidl.util.Type(V) !== "Object" || !types.isDataView(V)) {
         throw webidl.errors.exception({
           header: prefix,
-          message: `${name} is not a DataView.`
+          message: `${name2} is not a DataView.`
         });
       }
       if (opts?.allowShared === false && types.isSharedArrayBuffer(V.buffer)) {
@@ -4045,19 +4045,19 @@ var require_webidl = __commonJS({
       }
       return V;
     };
-    webidl.converters.BufferSource = function(V, prefix, name, opts) {
+    webidl.converters.BufferSource = function(V, prefix, name2, opts) {
       if (types.isAnyArrayBuffer(V)) {
-        return webidl.converters.ArrayBuffer(V, prefix, name, { ...opts, allowShared: false });
+        return webidl.converters.ArrayBuffer(V, prefix, name2, { ...opts, allowShared: false });
       }
       if (types.isTypedArray(V)) {
-        return webidl.converters.TypedArray(V, V.constructor, prefix, name, { ...opts, allowShared: false });
+        return webidl.converters.TypedArray(V, V.constructor, prefix, name2, { ...opts, allowShared: false });
       }
       if (types.isDataView(V)) {
-        return webidl.converters.DataView(V, prefix, name, { ...opts, allowShared: false });
+        return webidl.converters.DataView(V, prefix, name2, { ...opts, allowShared: false });
       }
       throw webidl.errors.conversionFailed({
         prefix,
-        argument: `${name} ("${webidl.util.Stringify(V)}")`,
+        argument: `${name2} ("${webidl.util.Stringify(V)}")`,
         types: ["BufferSource"]
       });
     };
@@ -4501,7 +4501,7 @@ var require_util2 = __commonJS({
       return result;
     }
     var esIteratorPrototype = Object.getPrototypeOf(Object.getPrototypeOf([][Symbol.iterator]()));
-    function createIterator(name, kInternalIterator, keyIndex = 0, valueIndex = 1) {
+    function createIterator(name2, kInternalIterator, keyIndex = 0, valueIndex = 1) {
       class FastIterableIterator {
         /** @type {any} */
         #target;
@@ -4522,7 +4522,7 @@ var require_util2 = __commonJS({
         next() {
           if (typeof this !== "object" || this === null || !(#target in this)) {
             throw new TypeError(
-              `'next' called on an object that does not implement interface ${name} Iterator.`
+              `'next' called on an object that does not implement interface ${name2} Iterator.`
             );
           }
           const index = this.#index;
@@ -4561,7 +4561,7 @@ var require_util2 = __commonJS({
           writable: false,
           enumerable: false,
           configurable: true,
-          value: `${name} Iterator`
+          value: `${name2} Iterator`
         },
         next: { writable: true, enumerable: true, configurable: true }
       });
@@ -4569,8 +4569,8 @@ var require_util2 = __commonJS({
         return new FastIterableIterator(target, kind);
       };
     }
-    function iteratorMixin(name, object2, kInternalIterator, keyIndex = 0, valueIndex = 1) {
-      const makeIterator = createIterator(name, kInternalIterator, keyIndex, valueIndex);
+    function iteratorMixin(name2, object2, kInternalIterator, keyIndex = 0, valueIndex = 1) {
+      const makeIterator = createIterator(name2, kInternalIterator, keyIndex, valueIndex);
       const properties = {
         keys: {
           writable: true,
@@ -4605,10 +4605,10 @@ var require_util2 = __commonJS({
           configurable: true,
           value: function forEach(callbackfn, thisArg = globalThis) {
             webidl.brandCheck(this, object2);
-            webidl.argumentLengthCheck(arguments, 1, `${name}.forEach`);
+            webidl.argumentLengthCheck(arguments, 1, `${name2}.forEach`);
             if (typeof callbackfn !== "function") {
               throw new TypeError(
-                `Failed to execute 'forEach' on '${name}': parameter 1 is not of type 'Function'.`
+                `Failed to execute 'forEach' on '${name2}': parameter 1 is not of type 'Function'.`
               );
             }
             for (const { 0: key, 1: value } of makeIterator(this, "key+value")) {
@@ -4860,8 +4860,8 @@ var require_util2 = __commonJS({
       }
       return values;
     }
-    function getDecodeSplit(name, list3) {
-      const value = list3.get(name, true);
+    function getDecodeSplit(name2, list3) {
+      const value = list3.get(name2, true);
       if (value === null) {
         return null;
       }
@@ -5048,7 +5048,7 @@ var require_formdata = __commonJS({
         }
         this[kState] = [];
       }
-      append(name, value, filename = void 0) {
+      append(name2, value, filename = void 0) {
         webidl.brandCheck(this, _FormData);
         const prefix = "FormData.append";
         webidl.argumentLengthCheck(arguments, 2, prefix);
@@ -5057,45 +5057,45 @@ var require_formdata = __commonJS({
             "Failed to execute 'append' on 'FormData': parameter 2 is not of type 'Blob'"
           );
         }
-        name = webidl.converters.USVString(name, prefix, "name");
+        name2 = webidl.converters.USVString(name2, prefix, "name");
         value = isBlobLike(value) ? webidl.converters.Blob(value, prefix, "value", { strict: false }) : webidl.converters.USVString(value, prefix, "value");
         filename = arguments.length === 3 ? webidl.converters.USVString(filename, prefix, "filename") : void 0;
-        const entry = makeEntry(name, value, filename);
+        const entry = makeEntry(name2, value, filename);
         this[kState].push(entry);
       }
-      delete(name) {
+      delete(name2) {
         webidl.brandCheck(this, _FormData);
         const prefix = "FormData.delete";
         webidl.argumentLengthCheck(arguments, 1, prefix);
-        name = webidl.converters.USVString(name, prefix, "name");
-        this[kState] = this[kState].filter((entry) => entry.name !== name);
+        name2 = webidl.converters.USVString(name2, prefix, "name");
+        this[kState] = this[kState].filter((entry) => entry.name !== name2);
       }
-      get(name) {
+      get(name2) {
         webidl.brandCheck(this, _FormData);
         const prefix = "FormData.get";
         webidl.argumentLengthCheck(arguments, 1, prefix);
-        name = webidl.converters.USVString(name, prefix, "name");
-        const idx = this[kState].findIndex((entry) => entry.name === name);
+        name2 = webidl.converters.USVString(name2, prefix, "name");
+        const idx = this[kState].findIndex((entry) => entry.name === name2);
         if (idx === -1) {
           return null;
         }
         return this[kState][idx].value;
       }
-      getAll(name) {
+      getAll(name2) {
         webidl.brandCheck(this, _FormData);
         const prefix = "FormData.getAll";
         webidl.argumentLengthCheck(arguments, 1, prefix);
-        name = webidl.converters.USVString(name, prefix, "name");
-        return this[kState].filter((entry) => entry.name === name).map((entry) => entry.value);
+        name2 = webidl.converters.USVString(name2, prefix, "name");
+        return this[kState].filter((entry) => entry.name === name2).map((entry) => entry.value);
       }
-      has(name) {
+      has(name2) {
         webidl.brandCheck(this, _FormData);
         const prefix = "FormData.has";
         webidl.argumentLengthCheck(arguments, 1, prefix);
-        name = webidl.converters.USVString(name, prefix, "name");
-        return this[kState].findIndex((entry) => entry.name === name) !== -1;
+        name2 = webidl.converters.USVString(name2, prefix, "name");
+        return this[kState].findIndex((entry) => entry.name === name2) !== -1;
       }
-      set(name, value, filename = void 0) {
+      set(name2, value, filename = void 0) {
         webidl.brandCheck(this, _FormData);
         const prefix = "FormData.set";
         webidl.argumentLengthCheck(arguments, 2, prefix);
@@ -5104,16 +5104,16 @@ var require_formdata = __commonJS({
             "Failed to execute 'set' on 'FormData': parameter 2 is not of type 'Blob'"
           );
         }
-        name = webidl.converters.USVString(name, prefix, "name");
+        name2 = webidl.converters.USVString(name2, prefix, "name");
         value = isBlobLike(value) ? webidl.converters.Blob(value, prefix, "name", { strict: false }) : webidl.converters.USVString(value, prefix, "name");
         filename = arguments.length === 3 ? webidl.converters.USVString(filename, prefix, "name") : void 0;
-        const entry = makeEntry(name, value, filename);
-        const idx = this[kState].findIndex((entry2) => entry2.name === name);
+        const entry = makeEntry(name2, value, filename);
+        const idx = this[kState].findIndex((entry2) => entry2.name === name2);
         if (idx !== -1) {
           this[kState] = [
             ...this[kState].slice(0, idx),
             entry,
-            ...this[kState].slice(idx + 1).filter((entry2) => entry2.name !== name)
+            ...this[kState].slice(idx + 1).filter((entry2) => entry2.name !== name2)
           ];
         } else {
           this[kState].push(entry);
@@ -5151,7 +5151,7 @@ var require_formdata = __commonJS({
         configurable: true
       }
     });
-    function makeEntry(name, value, filename) {
+    function makeEntry(name2, value, filename) {
       if (typeof value === "string") {
       } else {
         if (!isFileLike(value)) {
@@ -5165,7 +5165,7 @@ var require_formdata = __commonJS({
           value = value instanceof NativeFile ? new File2([value], filename, options) : new FileLike(value, filename, options);
         }
       }
-      return { name, value };
+      return { name: name2, value };
     }
     module.exports = { FormData, makeEntry };
   }
@@ -5244,7 +5244,7 @@ var require_formdata_parser = __commonJS({
         if (result === "failure") {
           return "failure";
         }
-        let { name, filename, contentType, encoding } = result;
+        let { name: name2, filename, contentType, encoding } = result;
         position.position += 2;
         let body;
         {
@@ -5273,22 +5273,22 @@ var require_formdata_parser = __commonJS({
         } else {
           value = utf8DecodeBytes(Buffer.from(body));
         }
-        assert2(isUSVString(name));
+        assert2(isUSVString(name2));
         assert2(typeof value === "string" && isUSVString(value) || isFileLike(value));
-        entryList.push(makeEntry(name, value, filename));
+        entryList.push(makeEntry(name2, value, filename));
       }
     }
     function parseMultipartFormDataHeaders(input2, position) {
-      let name = null;
+      let name2 = null;
       let filename = null;
       let contentType = null;
       let encoding = null;
       while (true) {
         if (input2[position.position] === 13 && input2[position.position + 1] === 10) {
-          if (name === null) {
+          if (name2 === null) {
             return "failure";
           }
-          return { name, filename, contentType, encoding };
+          return { name: name2, filename, contentType, encoding };
         }
         let headerName = collectASequenceOfBytes(
           (char) => char !== 10 && char !== 13 && char !== 58,
@@ -5310,13 +5310,13 @@ var require_formdata_parser = __commonJS({
         );
         switch (bufferToLowerCasedHeaderName(headerName)) {
           case "content-disposition": {
-            name = filename = null;
+            name2 = filename = null;
             if (!bufferStartsWith(input2, formDataNameBuffer, position)) {
               return "failure";
             }
             position.position += 17;
-            name = parseMultipartFormDataName(input2, position);
-            if (name === null) {
+            name2 = parseMultipartFormDataName(input2, position);
+            if (name2 === null) {
               return "failure";
             }
             if (bufferStartsWith(input2, filenameBuffer, position)) {
@@ -5373,7 +5373,7 @@ var require_formdata_parser = __commonJS({
     }
     function parseMultipartFormDataName(input2, position) {
       assert2(input2[position.position - 1] === 34);
-      let name = collectASequenceOfBytes(
+      let name2 = collectASequenceOfBytes(
         (char) => char !== 10 && char !== 13 && char !== 34,
         input2,
         position
@@ -5383,8 +5383,8 @@ var require_formdata_parser = __commonJS({
       } else {
         position.position++;
       }
-      name = new TextDecoder().decode(name).replace(/%0A/ig, "\n").replace(/%0D/ig, "\r").replace(/%22/g, '"');
-      return name;
+      name2 = new TextDecoder().decode(name2).replace(/%0A/ig, "\n").replace(/%0D/ig, "\r").replace(/%22/g, '"');
+      return name2;
     }
     function collectASequenceOfBytes(condition, input2, position) {
       let start = position.position;
@@ -5511,16 +5511,16 @@ Content-Disposition: form-data`;
         const rn = new Uint8Array([13, 10]);
         length = 0;
         let hasUnknownSizeValue = false;
-        for (const [name, value] of object2) {
+        for (const [name2, value] of object2) {
           if (typeof value === "string") {
-            const chunk2 = textEncoder.encode(prefix + `; name="${escape(normalizeLinefeeds(name))}"\r
+            const chunk2 = textEncoder.encode(prefix + `; name="${escape(normalizeLinefeeds(name2))}"\r
 \r
 ${normalizeLinefeeds(value)}\r
 `);
             blobParts.push(chunk2);
             length += chunk2.byteLength;
           } else {
-            const chunk2 = textEncoder.encode(`${prefix}; name="${escape(normalizeLinefeeds(name))}"` + (value.name ? `; filename="${escape(value.name)}"` : "") + `\r
+            const chunk2 = textEncoder.encode(`${prefix}; name="${escape(normalizeLinefeeds(name2))}"` + (value.name ? `; filename="${escape(value.name)}"` : "") + `\r
 Content-Type: ${value.type || "application/octet-stream"}\r
 \r
 `);
@@ -5664,8 +5664,8 @@ Content-Type: ${value.type || "application/octet-stream"}\r
                 case "application/x-www-form-urlencoded": {
                   const entries = new URLSearchParams(value.toString());
                   const fd = new FormData();
-                  for (const [name, value2] of entries) {
-                    fd.append(name, value2);
+                  for (const [name2, value2] of entries) {
+                    fd.append(name2, value2);
                   }
                   return fd;
                 }
@@ -6921,13 +6921,13 @@ var require_client_h2 = __commonJS({
     } = http2;
     function parseH2Headers(headers) {
       const result = [];
-      for (const [name, value] of Object.entries(headers)) {
+      for (const [name2, value] of Object.entries(headers)) {
         if (Array.isArray(value)) {
           for (const subvalue of value) {
-            result.push(Buffer.from(name), Buffer.from(subvalue));
+            result.push(Buffer.from(name2), Buffer.from(subvalue));
           }
         } else {
-          result.push(Buffer.from(name), Buffer.from(value));
+          result.push(Buffer.from(name2), Buffer.from(value));
         }
       }
       return result;
@@ -7571,8 +7571,8 @@ var require_redirect_handler = __commonJS({
         return true;
       }
       if (unknownOrigin && (header.length === 13 || header.length === 6 || header.length === 19)) {
-        const name = util.headerNameToString(header);
-        return name === "authorization" || name === "cookie" || name === "proxy-authorization";
+        const name2 = util.headerNameToString(header);
+        return name2 === "authorization" || name2 === "cookie" || name2 === "proxy-authorization";
       }
       return false;
     }
@@ -10825,13 +10825,13 @@ var require_mock_utils = __commonJS({
       for (let i = 0; i < keys.length; ++i) {
         const key = keys[i];
         const value = data[key];
-        const name = Buffer.from(`${key}`);
+        const name2 = Buffer.from(`${key}`);
         if (Array.isArray(value)) {
           for (let j = 0; j < value.length; ++j) {
-            result.push(name, Buffer.from(`${value[j]}`));
+            result.push(name2, Buffer.from(`${value[j]}`));
           }
         } else {
-          result.push(name, Buffer.from(`${value}`));
+          result.push(name2, Buffer.from(`${value}`));
         }
       }
       return result;
@@ -11981,12 +11981,12 @@ var require_headers = __commonJS({
         });
       }
     }
-    function appendHeader(headers, name, value) {
+    function appendHeader(headers, name2, value) {
       value = headerValueNormalize(value);
-      if (!isValidHeaderName(name)) {
+      if (!isValidHeaderName(name2)) {
         throw webidl.errors.invalidArgument({
           prefix: "Headers.append",
-          value: name,
+          value: name2,
           type: "header name"
         });
       } else if (!isValidHeaderValue(value)) {
@@ -11999,7 +11999,7 @@ var require_headers = __commonJS({
       if (getHeadersGuard(headers) === "immutable") {
         throw new TypeError("immutable");
       }
-      return getHeadersList(headers).append(name, value, false);
+      return getHeadersList(headers).append(name2, value, false);
     }
     function compareHeaderName(a, b) {
       return a[0] < b[0] ? -1 : 1;
@@ -12022,8 +12022,8 @@ var require_headers = __commonJS({
        * @param {string} name
        * @param {boolean} isLowerCase
        */
-      contains(name, isLowerCase) {
-        return this[kHeadersMap].has(isLowerCase ? name : name.toLowerCase());
+      contains(name2, isLowerCase) {
+        return this[kHeadersMap].has(isLowerCase ? name2 : name2.toLowerCase());
       }
       clear() {
         this[kHeadersMap].clear();
@@ -12036,9 +12036,9 @@ var require_headers = __commonJS({
        * @param {string} value
        * @param {boolean} isLowerCase
        */
-      append(name, value, isLowerCase) {
+      append(name2, value, isLowerCase) {
         this[kHeadersSortedMap] = null;
-        const lowercaseName = isLowerCase ? name : name.toLowerCase();
+        const lowercaseName = isLowerCase ? name2 : name2.toLowerCase();
         const exists2 = this[kHeadersMap].get(lowercaseName);
         if (exists2) {
           const delimiter = lowercaseName === "cookie" ? "; " : ", ";
@@ -12047,7 +12047,7 @@ var require_headers = __commonJS({
             value: `${exists2.value}${delimiter}${value}`
           });
         } else {
-          this[kHeadersMap].set(lowercaseName, { name, value });
+          this[kHeadersMap].set(lowercaseName, { name: name2, value });
         }
         if (lowercaseName === "set-cookie") {
           (this.cookies ??= []).push(value);
@@ -12059,26 +12059,26 @@ var require_headers = __commonJS({
        * @param {string} value
        * @param {boolean} isLowerCase
        */
-      set(name, value, isLowerCase) {
+      set(name2, value, isLowerCase) {
         this[kHeadersSortedMap] = null;
-        const lowercaseName = isLowerCase ? name : name.toLowerCase();
+        const lowercaseName = isLowerCase ? name2 : name2.toLowerCase();
         if (lowercaseName === "set-cookie") {
           this.cookies = [value];
         }
-        this[kHeadersMap].set(lowercaseName, { name, value });
+        this[kHeadersMap].set(lowercaseName, { name: name2, value });
       }
       /**
        * @see https://fetch.spec.whatwg.org/#concept-header-list-delete
        * @param {string} name
        * @param {boolean} isLowerCase
        */
-      delete(name, isLowerCase) {
+      delete(name2, isLowerCase) {
         this[kHeadersSortedMap] = null;
-        if (!isLowerCase) name = name.toLowerCase();
-        if (name === "set-cookie") {
+        if (!isLowerCase) name2 = name2.toLowerCase();
+        if (name2 === "set-cookie") {
           this.cookies = null;
         }
-        this[kHeadersMap].delete(name);
+        this[kHeadersMap].delete(name2);
       }
       /**
        * @see https://fetch.spec.whatwg.org/#concept-header-list-get
@@ -12086,19 +12086,19 @@ var require_headers = __commonJS({
        * @param {boolean} isLowerCase
        * @returns {string | null}
        */
-      get(name, isLowerCase) {
-        return this[kHeadersMap].get(isLowerCase ? name : name.toLowerCase())?.value ?? null;
+      get(name2, isLowerCase) {
+        return this[kHeadersMap].get(isLowerCase ? name2 : name2.toLowerCase())?.value ?? null;
       }
       *[Symbol.iterator]() {
-        for (const { 0: name, 1: { value } } of this[kHeadersMap]) {
-          yield [name, value];
+        for (const { 0: name2, 1: { value } } of this[kHeadersMap]) {
+          yield [name2, value];
         }
       }
       get entries() {
         const headers = {};
         if (this[kHeadersMap].size !== 0) {
-          for (const { name, value } of this[kHeadersMap].values()) {
-            headers[name] = value;
+          for (const { name: name2, value } of this[kHeadersMap].values()) {
+            headers[name2] = value;
           }
         }
         return headers;
@@ -12109,13 +12109,13 @@ var require_headers = __commonJS({
       get entriesList() {
         const headers = [];
         if (this[kHeadersMap].size !== 0) {
-          for (const { 0: lowerName, 1: { name, value } } of this[kHeadersMap]) {
+          for (const { 0: lowerName, 1: { name: name2, value } } of this[kHeadersMap]) {
             if (lowerName === "set-cookie") {
               for (const cookie of this.cookies) {
-                headers.push([name, cookie]);
+                headers.push([name2, cookie]);
               }
             } else {
-              headers.push([name, value]);
+              headers.push([name2, value]);
             }
           }
         }
@@ -12161,8 +12161,8 @@ var require_headers = __commonJS({
           return array2;
         } else {
           let i = 0;
-          for (const { 0: name, 1: { value } } of this[kHeadersMap]) {
-            array2[i++] = [name, value];
+          for (const { 0: name2, 1: { value } } of this[kHeadersMap]) {
+            array2[i++] = [name2, value];
             assert2(value !== null);
           }
           return array2.sort(compareHeaderName);
@@ -12185,77 +12185,77 @@ var require_headers = __commonJS({
         }
       }
       // https://fetch.spec.whatwg.org/#dom-headers-append
-      append(name, value) {
+      append(name2, value) {
         webidl.brandCheck(this, _Headers);
         webidl.argumentLengthCheck(arguments, 2, "Headers.append");
         const prefix = "Headers.append";
-        name = webidl.converters.ByteString(name, prefix, "name");
+        name2 = webidl.converters.ByteString(name2, prefix, "name");
         value = webidl.converters.ByteString(value, prefix, "value");
-        return appendHeader(this, name, value);
+        return appendHeader(this, name2, value);
       }
       // https://fetch.spec.whatwg.org/#dom-headers-delete
-      delete(name) {
+      delete(name2) {
         webidl.brandCheck(this, _Headers);
         webidl.argumentLengthCheck(arguments, 1, "Headers.delete");
         const prefix = "Headers.delete";
-        name = webidl.converters.ByteString(name, prefix, "name");
-        if (!isValidHeaderName(name)) {
+        name2 = webidl.converters.ByteString(name2, prefix, "name");
+        if (!isValidHeaderName(name2)) {
           throw webidl.errors.invalidArgument({
             prefix: "Headers.delete",
-            value: name,
+            value: name2,
             type: "header name"
           });
         }
         if (this.#guard === "immutable") {
           throw new TypeError("immutable");
         }
-        if (!this.#headersList.contains(name, false)) {
+        if (!this.#headersList.contains(name2, false)) {
           return;
         }
-        this.#headersList.delete(name, false);
+        this.#headersList.delete(name2, false);
       }
       // https://fetch.spec.whatwg.org/#dom-headers-get
-      get(name) {
+      get(name2) {
         webidl.brandCheck(this, _Headers);
         webidl.argumentLengthCheck(arguments, 1, "Headers.get");
         const prefix = "Headers.get";
-        name = webidl.converters.ByteString(name, prefix, "name");
-        if (!isValidHeaderName(name)) {
+        name2 = webidl.converters.ByteString(name2, prefix, "name");
+        if (!isValidHeaderName(name2)) {
           throw webidl.errors.invalidArgument({
             prefix,
-            value: name,
+            value: name2,
             type: "header name"
           });
         }
-        return this.#headersList.get(name, false);
+        return this.#headersList.get(name2, false);
       }
       // https://fetch.spec.whatwg.org/#dom-headers-has
-      has(name) {
+      has(name2) {
         webidl.brandCheck(this, _Headers);
         webidl.argumentLengthCheck(arguments, 1, "Headers.has");
         const prefix = "Headers.has";
-        name = webidl.converters.ByteString(name, prefix, "name");
-        if (!isValidHeaderName(name)) {
+        name2 = webidl.converters.ByteString(name2, prefix, "name");
+        if (!isValidHeaderName(name2)) {
           throw webidl.errors.invalidArgument({
             prefix,
-            value: name,
+            value: name2,
             type: "header name"
           });
         }
-        return this.#headersList.contains(name, false);
+        return this.#headersList.contains(name2, false);
       }
       // https://fetch.spec.whatwg.org/#dom-headers-set
-      set(name, value) {
+      set(name2, value) {
         webidl.brandCheck(this, _Headers);
         webidl.argumentLengthCheck(arguments, 2, "Headers.set");
         const prefix = "Headers.set";
-        name = webidl.converters.ByteString(name, prefix, "name");
+        name2 = webidl.converters.ByteString(name2, prefix, "name");
         value = webidl.converters.ByteString(value, prefix, "value");
         value = headerValueNormalize(value);
-        if (!isValidHeaderName(name)) {
+        if (!isValidHeaderName(name2)) {
           throw webidl.errors.invalidArgument({
             prefix,
-            value: name,
+            value: name2,
             type: "header name"
           });
         } else if (!isValidHeaderValue(value)) {
@@ -12268,7 +12268,7 @@ var require_headers = __commonJS({
         if (this.#guard === "immutable") {
           throw new TypeError("immutable");
         }
-        this.#headersList.set(name, value, false);
+        this.#headersList.set(name2, value, false);
       }
       // https://fetch.spec.whatwg.org/#dom-headers-getsetcookie
       getSetCookie() {
@@ -12291,13 +12291,13 @@ var require_headers = __commonJS({
           return this.#headersList[kHeadersSortedMap] = names;
         }
         for (let i = 0; i < names.length; ++i) {
-          const { 0: name, 1: value } = names[i];
-          if (name === "set-cookie") {
+          const { 0: name2, 1: value } = names[i];
+          if (name2 === "set-cookie") {
             for (let j = 0; j < cookies.length; ++j) {
-              headers.push([name, cookies[j]]);
+              headers.push([name2, cookies[j]]);
             }
           } else {
-            headers.push([name, value]);
+            headers.push([name2, value]);
           }
         }
         return this.#headersList[kHeadersSortedMap] = headers;
@@ -12717,23 +12717,23 @@ var require_response = __commonJS({
     webidl.converters.URLSearchParams = webidl.interfaceConverter(
       URLSearchParams
     );
-    webidl.converters.XMLHttpRequestBodyInit = function(V, prefix, name) {
+    webidl.converters.XMLHttpRequestBodyInit = function(V, prefix, name2) {
       if (typeof V === "string") {
-        return webidl.converters.USVString(V, prefix, name);
+        return webidl.converters.USVString(V, prefix, name2);
       }
       if (isBlobLike(V)) {
-        return webidl.converters.Blob(V, prefix, name, { strict: false });
+        return webidl.converters.Blob(V, prefix, name2, { strict: false });
       }
       if (ArrayBuffer.isView(V) || types.isArrayBuffer(V)) {
-        return webidl.converters.BufferSource(V, prefix, name);
+        return webidl.converters.BufferSource(V, prefix, name2);
       }
       if (util.isFormDataLike(V)) {
-        return webidl.converters.FormData(V, prefix, name, { strict: false });
+        return webidl.converters.FormData(V, prefix, name2, { strict: false });
       }
       if (V instanceof URLSearchParams) {
-        return webidl.converters.URLSearchParams(V, prefix, name);
+        return webidl.converters.URLSearchParams(V, prefix, name2);
       }
-      return webidl.converters.DOMString(V, prefix, name);
+      return webidl.converters.DOMString(V, prefix, name2);
     };
     webidl.converters.BodyInit = function(V, prefix, argument) {
       if (V instanceof ReadableStream) {
@@ -13104,8 +13104,8 @@ var require_request2 = __commonJS({
           const headers = init.headers !== void 0 ? init.headers : new HeadersList(headersList);
           headersList.clear();
           if (headers instanceof HeadersList) {
-            for (const { name, value } of headers.rawValues()) {
-              headersList.append(name, value, false);
+            for (const { name: name2, value } of headers.rawValues()) {
+              headersList.append(name2, value, false);
             }
             headersList.cookies = headers.cookies;
           } else {
@@ -16109,9 +16109,9 @@ var require_util6 = __commonJS({
       }
       return false;
     }
-    function validateCookieName(name) {
-      for (let i = 0; i < name.length; ++i) {
-        const code = name.charCodeAt(i);
+    function validateCookieName(name2) {
+      for (let i = 0; i < name2.length; ++i) {
+        const code = name2.charCodeAt(i);
         if (code < 33 || // exclude CTLs (0-31), SP and HT
         code > 126 || // exclude non-ascii and DEL
         code === 34 || // "
@@ -16318,7 +16318,7 @@ var require_parse = __commonJS({
       }
       let nameValuePair = "";
       let unparsedAttributes = "";
-      let name = "";
+      let name2 = "";
       let value = "";
       if (header.includes(";")) {
         const position = { position: 0 };
@@ -16331,20 +16331,20 @@ var require_parse = __commonJS({
         value = nameValuePair;
       } else {
         const position = { position: 0 };
-        name = collectASequenceOfCodePointsFast(
+        name2 = collectASequenceOfCodePointsFast(
           "=",
           nameValuePair,
           position
         );
         value = nameValuePair.slice(position.position + 1);
       }
-      name = name.trim();
+      name2 = name2.trim();
       value = value.trim();
-      if (name.length + value.length > maxNameValuePairSize) {
+      if (name2.length + value.length > maxNameValuePairSize) {
         return null;
       }
       return {
-        name,
+        name: name2,
         value,
         ...parseUnparsedAttributes(unparsedAttributes)
       };
@@ -16457,19 +16457,19 @@ var require_cookies = __commonJS({
         return out;
       }
       for (const piece of cookie.split(";")) {
-        const [name, ...value] = piece.split("=");
-        out[name.trim()] = value.join("=");
+        const [name2, ...value] = piece.split("=");
+        out[name2.trim()] = value.join("=");
       }
       return out;
     }
-    function deleteCookie(headers, name, attributes) {
+    function deleteCookie(headers, name2, attributes) {
       webidl.brandCheck(headers, Headers2, { strict: false });
       const prefix = "deleteCookie";
       webidl.argumentLengthCheck(arguments, 2, prefix);
-      name = webidl.converters.DOMString(name, prefix, "name");
+      name2 = webidl.converters.DOMString(name2, prefix, "name");
       attributes = webidl.converters.DeleteCookieAttributes(attributes);
       setCookie(headers, {
-        name,
+        name: name2,
         value: "",
         expires: /* @__PURE__ */ new Date(0),
         ...attributes
@@ -17031,9 +17031,9 @@ var require_util7 = __commonJS({
       const extensionList = /* @__PURE__ */ new Map();
       while (position.position < extensions.length) {
         const pair = collectASequenceOfCodePointsFast(";", extensions, position);
-        const [name, value = ""] = pair.split("=");
+        const [name2, value = ""] = pair.split("=");
         extensionList.set(
-          removeHTTPWhitespace(name, true, false),
+          removeHTTPWhitespace(name2, true, false),
           removeHTTPWhitespace(value, false, true)
         );
         position.position++;
@@ -20438,23 +20438,23 @@ var ExitCode;
 function setSecret(secret) {
   issueCommand("add-mask", {}, secret);
 }
-function getInput(name, options) {
-  const val = process.env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`] || "";
+function getInput(name2, options) {
+  const val = process.env[`INPUT_${name2.replace(/ /g, "_").toUpperCase()}`] || "";
   if (options && options.required && !val) {
-    throw new Error(`Input required and not supplied: ${name}`);
+    throw new Error(`Input required and not supplied: ${name2}`);
   }
   if (options && options.trimWhitespace === false) {
     return val;
   }
   return val.trim();
 }
-function setOutput(name, value) {
+function setOutput(name2, value) {
   const filePath = process.env["GITHUB_OUTPUT"] || "";
   if (filePath) {
-    return issueFileCommand("OUTPUT", prepareKeyValueMessage(name, value));
+    return issueFileCommand("OUTPUT", prepareKeyValueMessage(name2, value));
   }
   process.stdout.write(os4.EOL);
-  issueCommand("set-output", { name }, toCommandValue(value));
+  issueCommand("set-output", { name: name2 }, toCommandValue(value));
 }
 function setFailed(message) {
   process.exitCode = ExitCode.Failure;
@@ -21639,12 +21639,12 @@ function merge(a, b) {
   });
   return clone(a, def);
 }
-function partial(Class2, schema, mask, name = "partial") {
+function partial(Class2, schema, mask, name2 = "partial") {
   const currDef = schema._zod.def;
   const checks = currDef.checks;
   const hasChecks = checks && checks.length > 0;
   if (hasChecks) {
-    throw new Error(`.${name}() cannot be used on object schemas containing refinements`);
+    throw new Error(`.${name2}() cannot be used on object schemas containing refinements`);
   }
   const selected = mask ? new Set(maskedKeys(schema, mask)) : void 0;
   const newShape = {};
@@ -21984,7 +21984,7 @@ function newError(Definition) {
   return new Definition();
 }
 // @__NO_SIDE_EFFECTS__
-function $constructor(name, initializer3, proto, params) {
+function $constructor(name2, initializer3, proto, params) {
   const zodProto = {};
   function Internals(def) {
     this.def = def;
@@ -22002,10 +22002,10 @@ function $constructor(name, initializer3, proto, params) {
       } finally {
         _zodDesc.value = void 0;
       }
-    } else if (inst._zod.traits.has(name)) {
+    } else if (inst._zod.traits.has(name2)) {
       return;
     }
-    inst._zod.traits.add(name);
+    inst._zod.traits.add(name2);
     initializer3(inst, def);
     if (initialized) {
       const own2 = Object.getPrototypeOf(inst);
@@ -22031,7 +22031,7 @@ function $constructor(name, initializer3, proto, params) {
   const Parent = params?.Parent ?? Object;
   class Definition extends Parent {
   }
-  Object.defineProperty(Definition, "name", { value: name });
+  Object.defineProperty(Definition, "name", { value: name2 });
   function _(def) {
     const inst = params?.Parent ? newError(Definition) : this;
     init(inst, def);
@@ -22052,10 +22052,10 @@ function $constructor(name, initializer3, proto, params) {
     value: (inst) => {
       if (params?.Parent && inst instanceof params.Parent)
         return true;
-      return inst?._zod?.traits?.has(name);
+      return inst?._zod?.traits?.has(name2);
     }
   });
-  Object.defineProperty(_, "name", { value: name });
+  Object.defineProperty(_, "name", { value: name2 });
   return _;
 }
 var $brand = /* @__PURE__ */ Symbol("zod_brand");
@@ -22065,8 +22065,8 @@ var $ZodAsyncError = class extends Error {
   }
 };
 var $ZodEncodeError = class extends Error {
-  constructor(name) {
-    super(`Encountered unidirectional transform during encode: ${name}`);
+  constructor(name2) {
+    super(`Encountered unidirectional transform during encode: ${name2}`);
     this.name = "ZodEncodeError";
   }
 };
@@ -33593,13 +33593,13 @@ ${code}
   return fn;
 }
 function addConstant(ctx, value) {
-  for (const [name2, v] of ctx.constants) {
+  for (const [name3, v] of ctx.constants) {
     if (v === value)
-      return name2;
+      return name3;
   }
-  const name = `c${ctx.constantCounter++}`;
-  ctx.constants.set(name, value);
-  return name;
+  const name2 = `c${ctx.constantCounter++}`;
+  ctx.constants.set(name2, value);
+  return name2;
 }
 function addUserConstant(ctx, fn) {
   ctx.definite = false;
@@ -42044,6 +42044,136 @@ var oidcBindingAttemptSchema = external_exports.object({
 });
 var oidcBindingAttemptListSchema = external_exports.object({ items: external_exports.array(oidcBindingAttemptSchema) });
 
+// ../shared/dist/schemas/integrations.js
+var CONTROL3 = /[\p{Cc}\p{Cf}]/u;
+var name = external_exports.string().trim().min(1, "Enter a name").max(100).refine((v) => !CONTROL3.test(v), "Remove control characters");
+var providerToken = external_exports.string().trim().min(16, "Paste the whole access token").max(512).regex(/^[\x21-\x7e]+$/, "Paste the token without spaces");
+var providerId = external_exports.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/, "Use the id shown by the provider");
+var gitBranch = external_exports.string().trim().min(1).max(250).regex(/^[A-Za-z0-9._/@+-]+$/, "Use a branch name").refine((v) => !v.includes(".."), "Use a branch name");
+var integrationProviderSchema = external_exports.enum(["vercel"]);
+var integrationStatusSchema = external_exports.enum(["ACTIVE", "DISABLED", "ERROR", "DISCONNECTED"]);
+var integrationTargetSchema = external_exports.enum(["DEVELOPMENT", "PREVIEW", "PRODUCTION", "CUSTOM"]);
+var userRef = external_exports.object({ id: external_exports.uuid(), email: external_exports.string(), displayName: external_exports.string().nullable() });
+var integrationConnectionSchema = external_exports.object({
+  id: external_exports.uuid(),
+  provider: integrationProviderSchema,
+  name: external_exports.string(),
+  status: integrationStatusSchema,
+  /** Vercel team (or personal account) the token acts for. */
+  account: external_exports.object({ id: external_exports.string(), name: external_exports.string(), type: external_exports.enum(["team", "user"]) }),
+  linkedProject: external_exports.object({ id: external_exports.string(), name: external_exports.string() }).nullable(),
+  /** A credential is stored (never returned). */
+  hasCredential: external_exports.boolean(),
+  lastCheckedAt: external_exports.iso.datetime().nullable(),
+  lastErrorCode: external_exports.string().nullable(),
+  lastSyncedAt: external_exports.iso.datetime().nullable(),
+  createdAt: external_exports.iso.datetime(),
+  createdBy: userRef.nullable()
+});
+var integrationListSchema = external_exports.object({ items: external_exports.array(integrationConnectionSchema) });
+var createVercelConnectionInputSchema = external_exports.object({ name, token: providerToken, teamId: providerId.optional() }).strict();
+var replaceCredentialInputSchema = external_exports.object({ token: providerToken }).strict();
+var providerProjectSchema = external_exports.object({
+  id: external_exports.string(),
+  name: external_exports.string(),
+  framework: external_exports.string().nullable()
+});
+var providerProjectListSchema = external_exports.object({ items: external_exports.array(providerProjectSchema) });
+var providerProjectQuerySchema = external_exports.object({
+  search: external_exports.string().trim().max(100).optional()
+});
+var linkProviderProjectInputSchema = external_exports.object({ projectId: providerId }).strict();
+var customEnvironmentSchema = external_exports.object({
+  id: external_exports.string(),
+  slug: external_exports.string(),
+  type: external_exports.enum(["development", "preview", "production"])
+});
+var customEnvironmentListSchema = external_exports.object({ items: external_exports.array(customEnvironmentSchema) });
+var createMappingInputSchema = external_exports.object({
+  environmentId: external_exports.uuid(),
+  target: integrationTargetSchema,
+  gitBranch: gitBranch.optional(),
+  customEnvironmentId: providerId.optional()
+}).strict().refine((v) => v.target === "PREVIEW" || v.gitBranch === void 0, {
+  message: "A branch applies to Preview only",
+  path: ["gitBranch"]
+}).refine((v) => v.target === "CUSTOM" === (v.customEnvironmentId !== void 0), {
+  message: "Choose a custom environment for the Custom target only",
+  path: ["customEnvironmentId"]
+});
+var integrationMappingSchema = external_exports.object({
+  id: external_exports.uuid(),
+  environment: external_exports.object({ id: external_exports.uuid(), name: external_exports.string(), isProtected: external_exports.boolean() }),
+  target: integrationTargetSchema,
+  gitBranch: external_exports.string().nullable(),
+  customEnvironment: external_exports.object({ id: external_exports.string(), slug: external_exports.string().nullable() }).nullable(),
+  managedVariables: external_exports.number().int(),
+  lastSyncedAt: external_exports.iso.datetime().nullable(),
+  createdAt: external_exports.iso.datetime()
+});
+var integrationMappingListSchema = external_exports.object({ items: external_exports.array(integrationMappingSchema) });
+var syncActionSchema = external_exports.enum(["create", "update", "unchanged", "conflict", "remove"]);
+var syncConflictSchema = external_exports.enum([
+  /** A provider variable with this key exists that EnvVault does not manage. */
+  "unmanaged",
+  /** EnvVault's variable was changed in the provider since the last sync. */
+  "changed_externally",
+  /** The provider variable also targets other environments; never changed automatically. */
+  "shared_target"
+]);
+var syncPlanItemSchema = external_exports.object({
+  key: external_exports.string(),
+  action: syncActionSchema,
+  conflict: syncConflictSchema.nullable(),
+  /** Writing an unmanaged or externally changed variable needs `overwrite`. */
+  needsOverwrite: external_exports.boolean(),
+  /** Removing needs `removeManaged`. */
+  needsRemoval: external_exports.boolean()
+});
+var syncPlanSchema = external_exports.object({
+  mappingId: external_exports.uuid(),
+  planHash: external_exports.string().regex(/^[0-9a-f]{64}$/),
+  items: external_exports.array(syncPlanItemSchema),
+  counts: external_exports.record(syncActionSchema, external_exports.number().int()),
+  /** Unrelated provider variables EnvVault will not touch. */
+  unrelated: external_exports.number().int(),
+  requiresConfirmation: external_exports.object({ protectedEnvironment: external_exports.boolean(), production: external_exports.boolean() })
+});
+var syncInputSchema = external_exports.object({
+  planHash: external_exports.string().regex(/^[0-9a-f]{64}$/),
+  /** Write unmanaged or externally changed variables with the same key. */
+  overwrite: external_exports.boolean().default(false),
+  /** Remove provider variables EnvVault manages whose key left the environment. */
+  removeManaged: external_exports.boolean().default(false),
+  confirmProtected: external_exports.boolean().default(false),
+  confirmProduction: external_exports.boolean().default(false)
+}).strict();
+var syncItemResultSchema = external_exports.object({
+  key: external_exports.string(),
+  action: syncActionSchema,
+  outcome: external_exports.enum(["written", "removed", "unchanged", "skipped", "failed", "not_attempted"]),
+  errorCode: external_exports.string().nullable()
+});
+var syncJobSchema = external_exports.object({
+  id: external_exports.uuid(),
+  mappingId: external_exports.uuid().nullable(),
+  environmentId: external_exports.uuid(),
+  status: external_exports.enum(["QUEUED", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"]),
+  trigger: external_exports.enum(["MANUAL", "SCHEDULED", "SECRET_CHANGED"]),
+  startedAt: external_exports.iso.datetime().nullable(),
+  finishedAt: external_exports.iso.datetime().nullable(),
+  errorCode: external_exports.string().nullable(),
+  errorMessage: external_exports.string().nullable(),
+  /** Seconds to wait before retrying after a provider rate limit. */
+  retryAfterSeconds: external_exports.number().int().nullable(),
+  counts: external_exports.record(external_exports.string(), external_exports.number().int()),
+  items: external_exports.array(syncItemResultSchema),
+  requestedBy: userRef.nullable(),
+  /** Vercel applies changed variables to new deployments only. */
+  redeployRequired: external_exports.boolean()
+});
+var syncJobListSchema = external_exports.object({ items: external_exports.array(syncJobSchema) });
+
 // ../sdk/dist/errors.js
 var EnvVaultApiError = class extends Error {
   statusCode;
@@ -42909,6 +43039,97 @@ var EnvVaultClient = class _EnvVaultClient {
       schema: oidcBindingAttemptListSchema
     });
   }
+  /* ------------------------------------------------ deployment integrations */
+  listIntegrations(workspaceId, projectId) {
+    return this.request(integrationPath(workspaceId, projectId), { schema: integrationListSchema });
+  }
+  /** Needs a recent step up. The token is verified with Vercel, stored encrypted and never returned. */
+  connectVercel(workspaceId, projectId, input2) {
+    return this.request(`${integrationPath(workspaceId, projectId)}/vercel`, {
+      method: "POST",
+      body: input2,
+      schema: integrationConnectionSchema
+    });
+  }
+  integration(workspaceId, projectId, id) {
+    return this.request(integrationPath(workspaceId, projectId, id), {
+      schema: integrationConnectionSchema
+    });
+  }
+  /** Needs a recent step up. */
+  replaceIntegrationToken(workspaceId, projectId, id, token) {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/credential`, {
+      method: "PUT",
+      body: { token },
+      schema: integrationConnectionSchema
+    });
+  }
+  checkIntegration(workspaceId, projectId, id) {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/check`, {
+      method: "POST",
+      schema: integrationConnectionSchema
+    });
+  }
+  /** Enabling needs a recent step up; disabling does not. */
+  setIntegrationEnabled(workspaceId, projectId, id, enabled) {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/${enabled ? "enable" : "disable"}`, { method: "POST", schema: integrationConnectionSchema });
+  }
+  /** Needs a recent step up. Erases the token and mappings; variables in Vercel stay. */
+  async disconnectIntegration(workspaceId, projectId, id) {
+    await this.request(integrationPath(workspaceId, projectId, id), {
+      method: "DELETE",
+      schema: noContentSchema
+    });
+  }
+  vercelProjects(workspaceId, projectId, id, search) {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/vercel/projects${toQuery(search ? { search } : {})}`, { schema: providerProjectListSchema });
+  }
+  /** Needs a recent step up. */
+  linkVercelProject(workspaceId, projectId, id, vercelProjectId) {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/vercel/project`, {
+      method: "PUT",
+      body: { projectId: vercelProjectId },
+      schema: integrationConnectionSchema
+    });
+  }
+  vercelCustomEnvironments(workspaceId, projectId, id) {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/vercel/custom-environments`, {
+      schema: customEnvironmentListSchema
+    });
+  }
+  async integrationMappings(workspaceId, projectId, id) {
+    return (await this.request(`${integrationPath(workspaceId, projectId, id)}/mappings`, {
+      schema: integrationMappingListSchema
+    })).items;
+  }
+  /** Needs a recent step up. */
+  createIntegrationMapping(workspaceId, projectId, id, input2) {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/mappings`, {
+      method: "POST",
+      body: input2,
+      schema: integrationMappingSchema
+    });
+  }
+  async deleteIntegrationMapping(workspaceId, projectId, id, mappingId) {
+    await this.request(`${integrationPath(workspaceId, projectId, id)}/mappings/${encodeURIComponent(mappingId)}`, { method: "DELETE", schema: noContentSchema });
+  }
+  /** Keys and planned actions only, never values. */
+  previewSync(workspaceId, projectId, id, mappingId) {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/mappings/${encodeURIComponent(mappingId)}/preview`, { method: "POST", schema: syncPlanSchema });
+  }
+  /**
+   * Writes values to Vercel for a previewed plan. Needs a recent step up and
+   * `secret:export`. Never retried automatically; a failed run reports which
+   * variables were written, and a new preview and run completes the rest.
+   */
+  runSync(workspaceId, projectId, id, mappingId, input2) {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/mappings/${encodeURIComponent(mappingId)}/sync`, { method: "POST", body: input2, schema: syncJobSchema });
+  }
+  syncJobs(workspaceId, projectId, id) {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/jobs`, {
+      schema: syncJobListSchema
+    });
+  }
   /* --------------------------------------------- machine side (evv_mt_) */
   /**
    * Exchanges a GitHub Actions OIDC identity token for a machine access
@@ -43081,8 +43302,8 @@ var EnvVaultClient = class _EnvVaultClient {
           await pause(backoffMs(attempt), cancel);
           continue;
         }
-        const name = error63?.name;
-        throw new EnvVaultNetworkError(name === "TimeoutError" || name === "AbortError" ? "timeout" : "unreachable");
+        const name2 = error63?.name;
+        throw new EnvVaultNetworkError(name2 === "TimeoutError" || name2 === "AbortError" ? "timeout" : "unreachable");
       }
       if (attempt < attempts && [502, 503, 504].includes(response.status)) {
         await response.body?.cancel().catch(() => void 0);
@@ -43169,6 +43390,10 @@ function secretPath(workspaceId, projectId, environmentId, secretId) {
 }
 function snapshotPath(workspaceId, projectId, environmentId, snapshotId) {
   return `${environmentPath(workspaceId, projectId, environmentId)}/snapshots/${encodeURIComponent(snapshotId)}`;
+}
+function integrationPath(workspaceId, projectId, id) {
+  const base = `${projectPath(workspaceId, projectId)}/integrations`;
+  return id ? `${base}/${encodeURIComponent(id)}` : base;
 }
 function bindingPath(workspaceId, projectId, bindingId) {
   const base = `${projectPath(workspaceId, projectId)}/oidc-trust-bindings`;
@@ -43464,9 +43689,9 @@ var EnvironmentPolicyError = class extends Error {
     this.name = "EnvironmentPolicyError";
   }
 };
-function judgeName(name) {
-  if (!NAME.test(name)) return "invalid";
-  const upper = name.toUpperCase();
+function judgeName(name2) {
+  if (!NAME.test(name2)) return "invalid";
+  const upper = name2.toUpperCase();
   if (FORBIDDEN_PREFIXES.some((p) => upper.startsWith(p))) return "forbidden";
   if (RESERVED.has(upper) || RESERVED_PREFIXES.some((p) => upper.startsWith(p))) {
     return "reserved";
@@ -43543,15 +43768,15 @@ function parseApiUrl(value) {
 function list2(value) {
   return value.split(/[\s,]+/).map((v) => v.trim()).filter((v) => v.length > 0);
 }
-function bool(name, value, fallback) {
+function bool(name2, value, fallback) {
   if (value === "") return fallback;
   if (value === "true") return true;
   if (value === "false") return false;
-  throw new InputError(`${name} must be true or false`);
+  throw new InputError(`${name2} must be true or false`);
 }
-function uuid3(name, value) {
+function uuid3(name2, value) {
   if (value === "") return void 0;
-  if (!UUID.test(value)) throw new InputError(`${name} must be an id (UUID)`);
+  if (!UUID.test(value)) throw new InputError(`${name2} must be an id (UUID)`);
   return value.toLowerCase();
 }
 function parseInputs(read) {
@@ -43698,7 +43923,7 @@ async function run(runner) {
       runner.setSecret(serviceCredential);
       known.add(serviceCredential);
     }
-    const inputs = parseInputs((name) => runner.getInput(name));
+    const inputs = parseInputs((name2) => runner.getInput(name2));
     await createEnvVaultClient({ baseUrl: inputs.apiUrl, timeoutMs: 15e3 }).checkCompatibility();
     client = machineClient(inputs, runner);
     const config2 = await client.runtime(inputs.environment, {
@@ -43757,13 +43982,13 @@ async function run(runner) {
 
 // src/index.ts
 process.exitCode = await run({
-  getInput: (name) => getInput(name),
+  getInput: (name2) => getInput(name2),
   getIDToken: (audience) => getIDToken(audience),
   setSecret: (value) => {
     setSecret(value);
   },
-  setOutput: (name, value) => {
-    setOutput(name, value);
+  setOutput: (name2, value) => {
+    setOutput(name2, value);
   },
   info: (message) => {
     info(message);

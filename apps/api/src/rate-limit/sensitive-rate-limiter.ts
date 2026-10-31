@@ -21,7 +21,9 @@ export type SensitiveAction =
   | 'machine-token'
   | 'machine-runtime'
   | 'credential-issue'
-  | 'oidc-token';
+  | 'oidc-token'
+  | 'integration-sync'
+  | 'integration-change';
 
 interface Rule {
   limit: number;
@@ -46,6 +48,9 @@ const MESSAGES: Record<SensitiveAction, string> = {
   'credential-issue':
     'Too many credentials issued in a short time. Wait a few minutes and try again.',
   'oidc-token': 'Too many token requests from this repository. Wait a minute and try again.',
+  'integration-sync': 'Too many synchronisations in a short time. Wait a minute and try again.',
+  'integration-change':
+    'Too many integration changes in a short time. Wait a few minutes and try again.',
 };
 
 export interface ConsumeInput {
@@ -101,6 +106,8 @@ export class SensitiveRateLimiter {
       },
       'credential-issue': { limit: 20, windowMs: 5 * minute },
       'oidc-token': { limit: env.OIDC_TOKEN_RATE_LIMIT, windowMs: minute },
+      'integration-sync': { limit: env.INTEGRATION_SYNC_RATE_LIMIT, windowMs: minute },
+      'integration-change': { limit: 30, windowMs: 5 * minute },
     };
   }
 

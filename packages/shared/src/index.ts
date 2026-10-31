@@ -19,4 +19,5 @@ export * from './schemas/cli.js';
 export * from './schemas/machine.js';
 export * from './domain/oidc-policy.js';
 export * from './schemas/oidc.js';
+export * from './schemas/integrations.js';
 export * from './schemas/error-catalog.js';

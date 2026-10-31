@@ -44,6 +44,9 @@ const PROJECT_ADMINISTRATION: PermissionKey[] = [
   'access_policy:manage',
   'service_identity:read',
   'service_identity:manage',
+  // Connecting and mapping only: pushing values also needs secret:export on the environment.
+  'integration:read',
+  'integration:manage',
 ];
 
 const PROJECT_READ: PermissionKey[] = [
@@ -128,6 +131,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       'change_request:review',
       'change_request:apply',
       'integration:read',
+      'integration:manage',
       'rotation_policy:manage',
     ],
   },

@@ -5,6 +5,7 @@
 - GitHub Actions OIDC: `EnvVaultMachineClient` accepts `oidcToken` (and `oidc` binding hints)
   instead of `credential`; `exchangeOidcToken` on `EnvVaultClient`.
 - Trust binding management methods (`listOidcTrustBindings` and the rest).
+- Deployment integrations: Vercel connections, mappings, `previewSync`, `runSync`, `syncJobs`.
 
 ## 0.1.0 (unreleased)
 

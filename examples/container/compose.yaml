@@ -1,0 +1,22 @@
+# Docker Compose with EnvVault, from a developer machine or a trusted host:
+#
+#   envvault docker compose --env development -- up
+#
+# `envvault docker compose` starts Compose with the values in its environment.
+# Two ways to hand them to a service:
+#
+# - `secrets:` with an `environment:` source mounts a value as a file in
+#   /run/secrets/<name>, not as a container variable. Prefer this for secrets.
+# - `environment:` with a bare name passes the variable through; it is then
+#   visible to `docker inspect` on this host.
+services:
+  app:
+    image: my-app:latest
+    environment:
+      - LOG_LEVEL
+    secrets:
+      - database_url
+
+secrets:
+  database_url:
+    environment: DATABASE_URL

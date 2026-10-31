@@ -177,6 +177,15 @@ Updated on 2026-10-24: `next` 16.4.0 to 16.4.1 (critical remote code execution a
 of service advisories published 2026-10-14), `@next/eslint-plugin-next` to match, and `vitest`
 4.1.11 to 4.1.12 (`@vitest/mocker`, GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp).
 
+Updated on 2026-10-31: `better-auth`, `@better-auth/core` and `@better-auth/passkey` 1.7.7 by
+override (critical GHSA-965c-763c-88jm, high GHSA-r4xp-prcw-77qf, low GHSA-44jh-23m7-hpcf).
+`@neondatabase/auth` pins 1.7.6 exactly, including in its latest release, 0.7.0-beta, so
+upgrading it would not help; remove the overrides once it ships 1.7.7 or later. `qs` 6.16.1 by
+override (GHSA-6pq8-jhm2-2vcw, denial of service in Express query strings). Accepted for now:
+`minimatch` 10.2.6 (moderate, GHSA-g3hv-75wg-m249; ESLint and Nest CLI tooling, and the fix is a
+major version) and `deepmerge` 4.3.1 (low, GHSA-gcqx-w48m-w2h4; the advisory names 4.3.2, which
+is not published).
+
 `sprintf-js` (moderate) comes from the test only Redis mock and has no patched release.
 Fixed by overrides, each inside the same major version: `body-parser` 2.4.0 (Express request
 bodies, GHSA-27r3-jxmh-p828), `multer` 2.5.0 (pinned exactly by `@nestjs/platform-express`,
@@ -325,3 +334,35 @@ Remaining risks:
 4. Commands run by the action can read and leak the values they receive;
    masking matches exact strings only.
 5. Docker isolated runner tests were not run in this phase (no Docker daemon).
+
+## 14. Phase 5B: deployment integrations
+
+New surfaces: a stored provider token, values copied outside EnvVault's
+encryption boundary, an outbound client to Vercel, and Docker helpers.
+
+| Risk                                                           | Control                                                                                                                                                               | Test                                                |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Provider token theft from the database                         | Envelope encrypted with the workspace keyring, own AAD domain and data key purpose, bound to workspace and connection; never returned or logged; erased on disconnect | `secret-cipher.test.ts`, `integrations.int-spec.ts` |
+| Integration managers reading values                            | Sync needs `secret:read` and `secret:export` on the environment; preview shows keys only                                                                              | `integrations.int-spec.ts`                          |
+| Overwriting or deleting Vercel variables EnvVault does not own | Only managed variables are changed or removed; unmanaged and shared ones need explicit overwrite or are never touched; removal is opt in                              | `sync-plan.spec.ts`, `integrations.int-spec.ts`     |
+| Stale confirmation                                             | Runs carry the preview's plan hash; any change refuses the run                                                                                                        | `integrations.int-spec.ts`                          |
+| Partial writes                                                 | One variable per request, outcome per key, managed state recorded per write, safe retry; no atomicity claimed                                                         | `integrations.int-spec.ts`                          |
+| Concurrent runs                                                | Unique partial index: one queued or running job per mapping; stale jobs released after 15 minutes                                                                     | `integrations.int-spec.ts`                          |
+| Protected and Production targets                               | Explicit confirmation required by the API; direct grants for protected exports                                                                                        | `integrations.int-spec.ts`                          |
+| Provider errors leaking values                                 | Fixed error codes only; provider bodies never stored or shown; job summaries hold keys and outcomes                                                                   | `integrations.int-spec.ts`                          |
+| Values on command lines or in images                           | `envvault docker run` passes `--env KEY` only; values travel in the docker CLI environment; Dockerfile guidance forbids `ARG`, `ENV` and build args for secrets       | `docker.test.ts`, `cli-docker.int-spec.ts`          |
+| Values redirecting Docker                                      | `DOCKER_*`, `COMPOSE_*`, `BUILDKIT_*`, loader and path variables are never passed                                                                                     | `docker.test.ts`, `cli-docker.int-spec.ts`          |
+| Workers running on revoked access                              | Example workers stop at the next refresh after revocation and fail closed at startup                                                                                  | `cloud-runtime.int-spec.ts`                         |
+
+Remaining risks:
+
+1. Values in Vercel are outside EnvVault's control; revoking access in EnvVault
+   does not remove copies already in Vercel or in running deployments.
+2. A Vercel token reaches every project of its team; Vercel offers no project
+   scoped tokens.
+3. Integration credentials are not yet covered by the key rewrap tooling
+   (`pnpm ops rewrap`); after a keyring rotation they keep working (old key
+   versions stay for decryption) but are not re-wrapped.
+4. Not tested against the live Vercel API or a real Docker daemon; see the
+   manual acceptance steps in [integrations/vercel.md](integrations/vercel.md)
+   and [integrations/docker.md](integrations/docker.md).

@@ -17,6 +17,8 @@ export const AAD_DOMAINS = {
   selfTest: 'envvault/key-self-test',
   /** Encryption of a keyring backup under a recovery key. */
   keyringBackup: 'envvault/keyring-backup',
+  /** Encryption of an integration's provider credential (for example a Vercel token). */
+  integrationCredential: 'envvault/integration-credential',
 } as const;
 
 export type AadDomain = (typeof AAD_DOMAINS)[keyof typeof AAD_DOMAINS];

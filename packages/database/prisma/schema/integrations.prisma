@@ -18,20 +18,29 @@ model IntegrationConnection {
   credentialEncryptedDataKey Bytes?               @map("credential_encrypted_data_key")
   credentialAlgorithm        EncryptionAlgorithm? @map("credential_algorithm")
   credentialEnvelopeVersion  Int?                 @map("credential_envelope_version")
+  /// Provider key version that wrapped the credential data key (like secret_versions.kms_key_version).
+  credentialKmsKeyVersion    Int?                 @map("credential_kms_key_version")
   encryptionKeyId            String?              @map("encryption_key_id") @db.Uuid
   createdById                String?              @map("created_by_id") @db.Uuid
   lastSyncedAt               DateTime?            @map("last_synced_at") @db.Timestamptz(3)
+  /// Last provider check (token valid, account reachable) and its sanitised error code.
+  lastCheckedAt              DateTime?            @map("last_checked_at") @db.Timestamptz(3)
+  lastErrorCode              String?              @map("last_error_code") @db.VarChar(64)
+  /// Disconnected: the credential is erased; the row stays for sync history.
+  disconnectedAt             DateTime?            @map("disconnected_at") @db.Timestamptz(3)
   createdAt                  DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                  DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workspace        Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project          Project?               @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "integration_connections_project_fkey")
-  encryptionKey    EncryptionKey?         @relation(fields: [workspaceId, encryptionKeyId], references: [workspaceId, id], onDelete: NoAction, map: "integration_connections_encryption_key_fkey")
-  createdBy        User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  workspace        Workspace                       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project          Project?                        @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "integration_connections_project_fkey")
+  encryptionKey    EncryptionKey?                  @relation(fields: [workspaceId, encryptionKeyId], references: [workspaceId, id], onDelete: NoAction, map: "integration_connections_encryption_key_fkey")
+  createdBy        User?                           @relation(fields: [createdById], references: [id], onDelete: SetNull)
   syncJobs         IntegrationSyncJob[]
   rotationPolicies SecretRotationPolicy[]
+  mappings         IntegrationEnvironmentMapping[]
 
   @@unique([workspaceId, id])
+  @@unique([workspaceId, projectId, id], map: "integration_connections_workspace_project_id_key")
   @@unique([workspaceId, provider, name])
   @@index([projectId])
   @@index([encryptionKeyId])
@@ -54,16 +63,81 @@ model IntegrationSyncJob {
   errorCode               String?       @map("error_code") @db.VarChar(64)
   /// Sanitised summary; must never include secret values or provider tokens.
   errorMessage            String?       @map("error_message") @db.VarChar(1000)
+  /// The mapping this run synchronised (null for runs before Phase 5B).
+  mappingId               String?       @map("mapping_id") @db.Uuid
+  requestedById           String?       @map("requested_by_id") @db.Uuid
+  /// Hash of the previewed plan the run was confirmed against.
+  planHash                String?       @map("plan_hash") @db.VarChar(64)
+  /// Per variable outcomes and counts: key names, actions and error codes, never values.
+  summary                 Json          @default("{}") @db.JsonB
   createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt               DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  integrationConnection IntegrationConnection @relation(fields: [workspaceId, integrationConnectionId], references: [workspaceId, id], onDelete: Cascade, map: "integration_sync_jobs_integration_fkey")
-  environment           Environment           @relation(fields: [workspaceId, projectId, environmentId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "integration_sync_jobs_environment_fkey")
+  integrationConnection IntegrationConnection          @relation(fields: [workspaceId, integrationConnectionId], references: [workspaceId, id], onDelete: Cascade, map: "integration_sync_jobs_integration_fkey")
+  environment           Environment                    @relation(fields: [workspaceId, projectId, environmentId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "integration_sync_jobs_environment_fkey")
+  mapping               IntegrationEnvironmentMapping? @relation(fields: [mappingId], references: [id], onDelete: SetNull, map: "integration_sync_jobs_mapping_fkey")
+  requestedBy           User?                          @relation("IntegrationSyncJobRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
 
   @@index([integrationConnectionId, createdAt])
   @@index([environmentId])
   @@index([status, scheduledAt])
   @@map("integration_sync_jobs")
+}
+
+/// Where one EnvVault environment is copied in a provider: for Vercel a target
+/// (Development, Preview, Production or a custom environment), optionally
+/// limited to one Preview branch. Synchronisation is always started by a person.
+model IntegrationEnvironmentMapping {
+  id                      String            @id @default(uuid(7)) @db.Uuid
+  workspaceId             String            @map("workspace_id") @db.Uuid
+  projectId               String            @map("project_id") @db.Uuid
+  integrationConnectionId String            @map("integration_connection_id") @db.Uuid
+  environmentId           String            @map("environment_id") @db.Uuid
+  target                  IntegrationTarget
+  /// Preview branch (Vercel `gitBranch`), only with target PREVIEW.
+  gitBranch               String?           @map("git_branch") @db.VarChar(250)
+  /// Provider id and slug of a custom environment, only with target CUSTOM.
+  customEnvironmentId     String?           @map("custom_environment_id") @db.VarChar(100)
+  customEnvironmentSlug   String?           @map("custom_environment_slug") @db.VarChar(100)
+  createdById             String?           @map("created_by_id") @db.Uuid
+  lastSyncedAt            DateTime?         @map("last_synced_at") @db.Timestamptz(3)
+  createdAt               DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  integrationConnection IntegrationConnection        @relation(fields: [workspaceId, projectId, integrationConnectionId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "integration_mappings_connection_fkey")
+  environment           Environment                  @relation(fields: [workspaceId, projectId, environmentId], references: [workspaceId, projectId, id], onDelete: Cascade, map: "integration_mappings_environment_fkey")
+  createdBy             User?                        @relation("IntegrationMappingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  managedVariables      IntegrationManagedVariable[]
+  syncJobs              IntegrationSyncJob[]
+
+  @@unique([workspaceId, id])
+  @@index([integrationConnectionId])
+  @@index([environmentId])
+  @@map("integration_environment_mappings")
+}
+
+/// A provider variable EnvVault created or adopted for a mapping. Only these
+/// are ever changed or removed by synchronisation; unrelated provider variables
+/// are left alone. `providerUpdatedAt` detects changes made outside EnvVault
+/// without reading the provider's values.
+model IntegrationManagedVariable {
+  id                 String   @id @default(uuid(7)) @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  mappingId          String   @map("mapping_id") @db.Uuid
+  key                String   @db.VarChar(256)
+  providerVariableId String   @map("provider_variable_id") @db.VarChar(100)
+  /// Provider's `updatedAt` (milliseconds) right after EnvVault's last write.
+  providerUpdatedAt  BigInt   @map("provider_updated_at")
+  /// The EnvVault secret version last pushed.
+  secretVersionId    String?  @map("secret_version_id") @db.Uuid
+  lastSyncJobId      String?  @map("last_sync_job_id") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  mapping IntegrationEnvironmentMapping @relation(fields: [workspaceId, mappingId], references: [workspaceId, id], onDelete: Cascade, map: "integration_managed_variables_mapping_fkey")
+
+  @@unique([mappingId, key])
+  @@map("integration_managed_variables")
 }
 
 /// In-app notification for a user, optionally within a workspace context.

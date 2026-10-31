@@ -4,7 +4,7 @@ A centralized environment variable and secrets management platform for developer
 teams and enterprises: workspaces, projects, unlimited custom environments, and
 encrypted, versioned, audited secrets.
 
-> **Status: Phase 5A (GitHub Actions OIDC federation and the EnvVault action).**
+> **Status: Phase 5B (Vercel, Docker and cloud runtime integrations).**
 > Authentication runs on **Neon Auth**. Workspaces, members and invitations (Phase 1), and
 > projects, custom environments and per environment access (Phase 2), are implemented.
 > Phase 3A added envelope encryption (AES-256-GCM, one data key per secret version); Phase 3B
@@ -16,7 +16,8 @@ encrypted, versioned, audited secrets.
 > machine identities with service credentials for CI pipelines and servers; Phase 4C documents
 > the public API, extends the TypeScript SDK, adds a Python SDK, examples and an API reference page;
 > Phase 5A lets GitHub Actions workflows authenticate with OIDC through trust bindings and adds an
-> EnvVault action that runs a command with the values.
+> EnvVault action that runs a command with the values; Phase 5B adds a previewed, manual Vercel
+> synchronisation, `envvault docker run|compose` and cloud runtime worker examples.
 > **Do not store real secrets in EnvVault yet**: keys are self managed on the API host and the
 > remaining production blockers are listed in
 > [docs/security-hardening.md](docs/security-hardening.md#10-remaining-risks-and-production-blockers).
@@ -62,7 +63,11 @@ compatibility policy; [docs/sdk-typescript.md](docs/sdk-typescript.md) and
 [docs/integrations/github-actions.md](docs/integrations/github-actions.md),
 [docs/integrations/github-oidc.md](docs/integrations/github-oidc.md) and
 [docs/integrations/ci-security.md](docs/integrations/ci-security.md) cover the GitHub Actions
-integration, its OIDC trust model and CI security. [docs/roadmap.md](docs/roadmap.md)
+integration, its OIDC trust model and CI security;
+[docs/integrations/vercel.md](docs/integrations/vercel.md),
+[docs/integrations/docker.md](docs/integrations/docker.md) and
+[docs/integrations/cloud-runtime.md](docs/integrations/cloud-runtime.md) cover Vercel, Docker and
+cloud runtimes. [docs/roadmap.md](docs/roadmap.md)
 lists completed and planned phases. The API's OpenAPI document is served
 at `GET /api/v1/openapi.json`, and `/developers/api` in the web app renders it. UI conventions are in
 [docs/design-system.md](docs/design-system.md); open `/design-system` in the running
@@ -182,6 +187,16 @@ steps:
 
 See [docs/integrations/github-actions.md](docs/integrations/github-actions.md) and
 `examples/github-actions/`.
+
+### Vercel and Docker
+
+Project → Integrations → Vercel connects a Vercel team with an access token (stored encrypted),
+maps environments to Vercel targets, and copies values only after a preview you confirm.
+
+```bash
+envvault docker run --env development -- --rm my-app:latest   # values as --env KEY, never on the command line
+envvault docker compose --env development -- up             # Compose secrets for /run/secrets files
+```
 
 ### Using the SDKs
 

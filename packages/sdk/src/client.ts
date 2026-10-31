@@ -30,6 +30,26 @@ import {
   type OidcTrustBindingQuery,
   oidcTrustBindingSchema,
   type UpdateOidcTrustBindingInput,
+  type CreateMappingInput,
+  type CreateVercelConnectionInput,
+  type CustomEnvironmentList,
+  customEnvironmentListSchema,
+  type IntegrationConnection,
+  integrationConnectionSchema,
+  type IntegrationList,
+  integrationListSchema,
+  type IntegrationMapping,
+  integrationMappingListSchema,
+  integrationMappingSchema,
+  type ProviderProjectList,
+  providerProjectListSchema,
+  type SyncInput,
+  type SyncJob,
+  type SyncJobList,
+  syncJobListSchema,
+  syncJobSchema,
+  type SyncPlan,
+  syncPlanSchema,
   type MachineVariableList,
   machineVariableListSchema,
   type RevokeServiceCredentialInput,
@@ -1598,6 +1618,191 @@ export class EnvVaultClient {
     });
   }
 
+  /* ------------------------------------------------ deployment integrations */
+
+  listIntegrations(workspaceId: string, projectId: string): Promise<IntegrationList> {
+    return this.request(integrationPath(workspaceId, projectId), { schema: integrationListSchema });
+  }
+
+  /** Needs a recent step up. The token is verified with Vercel, stored encrypted and never returned. */
+  connectVercel(
+    workspaceId: string,
+    projectId: string,
+    input: CreateVercelConnectionInput,
+  ): Promise<IntegrationConnection> {
+    return this.request(`${integrationPath(workspaceId, projectId)}/vercel`, {
+      method: 'POST',
+      body: input,
+      schema: integrationConnectionSchema,
+    });
+  }
+
+  integration(workspaceId: string, projectId: string, id: string): Promise<IntegrationConnection> {
+    return this.request(integrationPath(workspaceId, projectId, id), {
+      schema: integrationConnectionSchema,
+    });
+  }
+
+  /** Needs a recent step up. */
+  replaceIntegrationToken(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+    token: string,
+  ): Promise<IntegrationConnection> {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/credential`, {
+      method: 'PUT',
+      body: { token },
+      schema: integrationConnectionSchema,
+    });
+  }
+
+  checkIntegration(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+  ): Promise<IntegrationConnection> {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/check`, {
+      method: 'POST',
+      schema: integrationConnectionSchema,
+    });
+  }
+
+  /** Enabling needs a recent step up; disabling does not. */
+  setIntegrationEnabled(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+    enabled: boolean,
+  ): Promise<IntegrationConnection> {
+    return this.request(
+      `${integrationPath(workspaceId, projectId, id)}/${enabled ? 'enable' : 'disable'}`,
+      { method: 'POST', schema: integrationConnectionSchema },
+    );
+  }
+
+  /** Needs a recent step up. Erases the token and mappings; variables in Vercel stay. */
+  async disconnectIntegration(workspaceId: string, projectId: string, id: string): Promise<void> {
+    await this.request(integrationPath(workspaceId, projectId, id), {
+      method: 'DELETE',
+      schema: noContentSchema,
+    });
+  }
+
+  vercelProjects(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+    search?: string,
+  ): Promise<ProviderProjectList> {
+    return this.request(
+      `${integrationPath(workspaceId, projectId, id)}/vercel/projects${toQuery(search ? { search } : {})}`,
+      { schema: providerProjectListSchema },
+    );
+  }
+
+  /** Needs a recent step up. */
+  linkVercelProject(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+    vercelProjectId: string,
+  ): Promise<IntegrationConnection> {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/vercel/project`, {
+      method: 'PUT',
+      body: { projectId: vercelProjectId },
+      schema: integrationConnectionSchema,
+    });
+  }
+
+  vercelCustomEnvironments(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+  ): Promise<CustomEnvironmentList> {
+    return this.request(
+      `${integrationPath(workspaceId, projectId, id)}/vercel/custom-environments`,
+      {
+        schema: customEnvironmentListSchema,
+      },
+    );
+  }
+
+  async integrationMappings(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+  ): Promise<IntegrationMapping[]> {
+    return (
+      await this.request(`${integrationPath(workspaceId, projectId, id)}/mappings`, {
+        schema: integrationMappingListSchema,
+      })
+    ).items;
+  }
+
+  /** Needs a recent step up. */
+  createIntegrationMapping(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+    input: CreateMappingInput,
+  ): Promise<IntegrationMapping> {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/mappings`, {
+      method: 'POST',
+      body: input,
+      schema: integrationMappingSchema,
+    });
+  }
+
+  async deleteIntegrationMapping(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+    mappingId: string,
+  ): Promise<void> {
+    await this.request(
+      `${integrationPath(workspaceId, projectId, id)}/mappings/${encodeURIComponent(mappingId)}`,
+      { method: 'DELETE', schema: noContentSchema },
+    );
+  }
+
+  /** Keys and planned actions only, never values. */
+  previewSync(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+    mappingId: string,
+  ): Promise<SyncPlan> {
+    return this.request(
+      `${integrationPath(workspaceId, projectId, id)}/mappings/${encodeURIComponent(mappingId)}/preview`,
+      { method: 'POST', schema: syncPlanSchema },
+    );
+  }
+
+  /**
+   * Writes values to Vercel for a previewed plan. Needs a recent step up and
+   * `secret:export`. Never retried automatically; a failed run reports which
+   * variables were written, and a new preview and run completes the rest.
+   */
+  runSync(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+    mappingId: string,
+    input: SyncInput,
+  ): Promise<SyncJob> {
+    return this.request(
+      `${integrationPath(workspaceId, projectId, id)}/mappings/${encodeURIComponent(mappingId)}/sync`,
+      { method: 'POST', body: input, schema: syncJobSchema },
+    );
+  }
+
+  syncJobs(workspaceId: string, projectId: string, id: string): Promise<SyncJobList> {
+    return this.request(`${integrationPath(workspaceId, projectId, id)}/jobs`, {
+      schema: syncJobListSchema,
+    });
+  }
+
   /* --------------------------------------------- machine side (evv_mt_) */
 
   /**
@@ -1965,6 +2170,11 @@ function snapshotPath(
   snapshotId: string,
 ): string {
   return `${environmentPath(workspaceId, projectId, environmentId)}/snapshots/${encodeURIComponent(snapshotId)}`;
+}
+
+function integrationPath(workspaceId: string, projectId: string, id?: string): string {
+  const base = `${projectPath(workspaceId, projectId)}/integrations`;
+  return id ? `${base}/${encodeURIComponent(id)}` : base;
 }
 
 function bindingPath(workspaceId: string, projectId: string, bindingId?: string): string {

@@ -4,24 +4,25 @@ Where EnvVault stands and what comes next. "Completed" means implemented and
 tested on a branch; nothing here is production ready (see
 [security-hardening.md](security-hardening.md#10-remaining-risks-and-production-blockers)).
 
-| Phase | Scope                                                                    | Status                                         |
-| ----- | ------------------------------------------------------------------------ | ---------------------------------------------- |
-| 1     | Authentication (Neon Auth), workspaces, members, invitations             | Completed                                      |
-| 2     | Projects, custom environments, per environment access                    | Completed                                      |
-| 3A    | Envelope encryption (AES-256-GCM, data keys per version)                 | Completed                                      |
-| 3B    | Secrets: storage, versions, reveal, audit                                | Completed                                      |
-| 3C    | .env import and export, history and rollback, bulk actions               | Completed                                      |
-| 3D    | Environment comparison, inheritance, validation, snapshots               | Completed                                      |
-| 3E    | Security hardening, key recovery, deployment readiness                   | Completed (PR #1 open, not merged)             |
-| 4A    | Developer CLI: browser sign in, project linking, `run`, `pull`, `doctor` | Completed (local branch, not pushed)           |
-| 4B    | Machine identities, service credentials, CI/CD authentication            | Implemented (local commit 64d5665, not pushed) |
-| 4C    | Public API conventions, TypeScript and Python SDKs, developer docs       | Implemented (local commit 3c9cd95, not pushed) |
-| 5A    | GitHub Actions OIDC federation and the EnvVault action                   | Implemented (local branch, not pushed)         |
-| 5     | Further deployment integrations (hosting platforms, cloud stores)        | Planned                                        |
-| 6     | Approvals and collaboration                                              | Planned                                        |
-| 7     | Monitoring and rotation                                                  | Planned                                        |
-| 8     | Enterprise features                                                      | Planned                                        |
-| 9     | Deployment and release                                                   | Planned                                        |
+| Phase | Scope                                                                    | Status                              |
+| ----- | ------------------------------------------------------------------------ | ----------------------------------- |
+| 1     | Authentication (Neon Auth), workspaces, members, invitations             | Completed                           |
+| 2     | Projects, custom environments, per environment access                    | Completed                           |
+| 3A    | Envelope encryption (AES-256-GCM, data keys per version)                 | Completed                           |
+| 3B    | Secrets: storage, versions, reveal, audit                                | Completed                           |
+| 3C    | .env import and export, history and rollback, bulk actions               | Completed                           |
+| 3D    | Environment comparison, inheritance, validation, snapshots               | Completed                           |
+| 3E    | Security hardening, key recovery, deployment readiness                   | Completed (on main)                 |
+| 4A    | Developer CLI: browser sign in, project linking, `run`, `pull`, `doctor` | Completed (on main)                 |
+| 4B    | Machine identities, service credentials, CI/CD authentication            | Completed (on main)                 |
+| 4C    | Public API conventions, TypeScript and Python SDKs, developer docs       | Completed (on main)                 |
+| 5A    | GitHub Actions OIDC federation and the EnvVault action                   | Completed (on main, eba51e6)        |
+| 5B    | Vercel, Docker and cloud runtime integrations                            | Implemented (on branch, not merged) |
+| 5     | Further deployment integrations (hosting platforms, cloud stores)        | Planned                             |
+| 6     | Approvals and collaboration                                              | Planned                             |
+| 7     | Monitoring and rotation                                                  | Planned                             |
+| 8     | Enterprise features                                                      | Planned                             |
+| 9     | Deployment and release                                                   | Planned                             |
 
 ## Phase 4B (implemented)
 
@@ -101,12 +102,38 @@ Not in 5A:
 - Publishing the action.
 - OIDC from other CI providers.
 
+## Phase 5B (implemented)
+
+On `phase-5b/deployment-integrations`:
+
+- Vercel: encrypted token connections, project linking, environment mappings
+  (Development, Preview with optional branch, Production, custom environments),
+  previewed and confirmed manual synchronisation of managed variables only,
+  conflict detection without reading Vercel values, opt in removal, per variable
+  partial results and safe retry, history and health.
+- Docker: `envvault docker run` (variables by name only) and
+  `envvault docker compose` (Compose secrets), refusing names that reconfigure
+  Docker.
+- Cloud runtimes: Node.js and Python workers (fail closed, refresh with jitter,
+  stop on revocation) and a container example.
+- Integrations page with provider cards, Vercel wizard, mappings, preview,
+  confirmation, activity, disable and disconnect.
+- Docs: [integrations/vercel.md](integrations/vercel.md),
+  [integrations/docker.md](integrations/docker.md),
+  [integrations/cloud-runtime.md](integrations/cloud-runtime.md).
+
+Not in 5B:
+
+- Automatic or scheduled synchronisation.
+- Other providers (Netlify, AWS Secrets Manager, Kubernetes).
+- Validation against live Vercel or a Docker daemon (manual steps documented).
+
 ## Later phases
 
 The outlines below are placeholders until each phase is specified.
 
-- **5B, next.** To be specified (for example other CI providers or deployment
-  platforms).
+- **5C, next.** To be specified (for example more providers or scheduled
+  synchronisation).
 - **5, Further deployment integrations.** Delivering configuration to hosting and
   deployment platforms with machine identities.
 - **6, Approvals and collaboration.** Enforcing the change request and

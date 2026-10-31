@@ -89,14 +89,15 @@ model Environment {
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt         DateTime?         @map("deleted_at") @db.Timestamptz(3)
 
-  project                Project                       @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "environments_project_fkey")
-  createdBy              User?                         @relation("EnvironmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  project                Project                         @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade, map: "environments_project_fkey")
+  createdBy              User?                           @relation("EnvironmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   secrets                Secret[]
   accessPolicies         AccessPolicy[]
   changeRequests         ChangeRequest[]
   syncJobs               IntegrationSyncJob[]
-  baseEnvironment        Environment?                  @relation("EnvironmentInheritance", fields: [workspaceId, projectId, baseEnvironmentId], references: [workspaceId, projectId, id], onDelete: NoAction, onUpdate: NoAction, map: "environments_base_environment_fkey")
-  inheritingEnvironments Environment[]                 @relation("EnvironmentInheritance")
+  integrationMappings    IntegrationEnvironmentMapping[]
+  baseEnvironment        Environment?                    @relation("EnvironmentInheritance", fields: [workspaceId, projectId, baseEnvironmentId], references: [workspaceId, projectId, id], onDelete: NoAction, onUpdate: NoAction, map: "environments_base_environment_fkey")
+  inheritingEnvironments Environment[]                   @relation("EnvironmentInheritance")
   validationRules        ConfigurationValidationRule[]
   snapshots              EnvironmentSnapshot[]
 

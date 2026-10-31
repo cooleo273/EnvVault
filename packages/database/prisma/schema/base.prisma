@@ -200,8 +200,17 @@ enum SyncJobStatus {
   QUEUED
   RUNNING
   SUCCEEDED
+  /// Some variables were written and some were not; the summary says which.
+  PARTIAL
   FAILED
   CANCELLED
+}
+
+enum IntegrationTarget {
+  DEVELOPMENT
+  PREVIEW
+  PRODUCTION
+  CUSTOM
 }
 
 enum SyncTrigger {

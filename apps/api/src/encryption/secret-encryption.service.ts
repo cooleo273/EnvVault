@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  type CredentialEncryptionContext,
   isCryptoError,
   type RewrapResult,
   SecretCipher,
@@ -35,6 +36,28 @@ export class SecretEncryptionService {
       return await this.secretCipher().decryptSecret(envelope, context);
     } catch (error) {
       this.logFailure('decrypt', error, context);
+      throw error;
+    }
+  }
+
+  /** A provider credential (for example a Vercel token), under the same keyring and envelope scheme. */
+  encryptCredential(
+    plaintext: string,
+    context: CredentialEncryptionContext,
+  ): Promise<SecretEnvelope> {
+    return this.secretCipher().encryptCredential(plaintext, context);
+  }
+
+  async decryptCredential(
+    envelope: SecretEnvelope,
+    context: CredentialEncryptionContext,
+  ): Promise<string> {
+    try {
+      return await this.secretCipher().decryptCredential(envelope, context);
+    } catch (error) {
+      this.logger.warn(
+        `Credential decrypt failed (${isCryptoError(error) ? error.code : 'UNKNOWN'}) for integration ${context.connectionId}`,
+      );
       throw error;
     }
   }
